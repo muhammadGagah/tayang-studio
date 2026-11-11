@@ -47,24 +47,30 @@ describe('open file tabs', () => {
 });
 
 describe('FileTree', () => {
-  it('lists the top folder, opens a folder when clicked, and opens files', async () => {
+  it('opens folders and files from the keyboard and exposes the current file', async () => {
     const onOpen = vi.fn();
-    render(<FileTree projectId="p" folderName="my-video" activePath={null} reloadKey={0} onOpen={onOpen} />);
-    const tree = await screen.findByRole('tree', { name: 'Files' });
-    expect(within(tree).getAllByRole('treeitem').map((i) => i.textContent)).toEqual(['node_modules', 'src', 'AGENTS.md']);
-    await userEvent.click(within(tree).getByRole('button', { name: 'src' }));
+    render(<FileTree projectId="p" folderName="my-video" activePath="src/Video.tsx" reloadKey={0} onOpen={onOpen} />);
+    const list = screen.getByRole('list', { name: 'Files' });
+    const folder = await within(list).findByRole('button', { name: 'src', expanded: false });
+    expect(within(list).getAllByRole('listitem').map((i) => i.textContent)).toEqual(['node_modules', 'src', 'AGENTS.md']);
+    folder.focus();
+    await userEvent.keyboard('{Enter}');
     expect(ipc.projectFiles).toHaveBeenCalledWith('p', 'src');
-    await userEvent.click(await within(tree).findByRole('button', { name: 'Video.tsx' }));
+    expect(folder).toHaveAttribute('aria-expanded', 'true');
+    const file = await within(list).findByRole('button', { name: 'Video.tsx', current: true });
+    await userEvent.tab();
+    expect(file).toHaveFocus();
+    await userEvent.keyboard('{Enter}');
     expect(onOpen).toHaveBeenCalledWith('src/Video.tsx');
-    expect(within(tree).getByRole('treeitem', { name: /src/ })).toHaveAttribute('aria-expanded', 'true');
   });
 
   it('searches by name and goes back to the tree when the search is cleared', async () => {
     render(<FileTree projectId="p" folderName="my-video" activePath={null} reloadKey={0} onOpen={() => {}} />);
-    await screen.findByRole('tree');
+    await screen.findByRole('list', { name: 'Files' });
     const box = screen.getByRole('searchbox', { name: 'Find files' });
     await userEvent.type(box, 'intro');
     expect(await screen.findByRole('button', { name: /intro\.tsx/ })).toBeInTheDocument();
+    expect(screen.getByRole('status')).toHaveTextContent('1 matching file');
     expect(ipc.findProjectFiles).toHaveBeenCalledWith('p', 'intro');
     await userEvent.type(box, '{Escape}');
     expect(await screen.findByRole('button', { name: 'AGENTS.md' })).toBeInTheDocument();
@@ -92,10 +98,39 @@ describe('Workspace', () => {
     expect(await screen.findByTestId('code')).toHaveTextContent('const a = 1;');
     expect(highlight).toHaveBeenCalledWith('const a = 1;\nconst b = 2;', 'Video.tsx');
     // Still there, only hidden: the video keeps its place.
-    expect(screen.getByTestId('the-preview').parentElement).toHaveClass('hidden');
-    await userEvent.click(screen.getByRole('button', { name: 'Close src/Video.tsx' }));
+    expect(screen.getByTestId('the-preview').parentElement).toHaveAttribute('hidden');
+    await userEvent.click(screen.getByTitle('Close src/Video.tsx'));
     expect(screen.queryByRole('tab', { name: 'Video.tsx' })).not.toBeInTheDocument();
-    expect(screen.getByTestId('the-preview').parentElement).not.toHaveClass('hidden');
+    expect(screen.getByTestId('the-preview').parentElement).not.toHaveAttribute('hidden');
+    expect(screen.getByRole('tab', { name: 'Preview' })).toHaveFocus();
+  });
+
+  it('navigates tabs with arrows, activates with Enter, and restores focus when closing', async () => {
+    vi.mocked(ipc.readProjectFile).mockResolvedValue({ kind: 'text', absPath: '/x/a.ts', size: 20, text: 'const a = 1;' });
+    useWorkspace.getState().open('p', 'a.ts');
+    useWorkspace.getState().open('p', 'b.ts');
+    useWorkspace.getState().show('p', null);
+    render(<Workspace projectId="p" reloadKey={0} preview={preview} />);
+    await userEvent.tab();
+    const previewTab = screen.getByRole('tab', { name: 'Preview', selected: true });
+    expect(previewTab).toHaveFocus();
+    await userEvent.keyboard('{ArrowLeft}');
+    const b = screen.getByRole('tab', { name: 'b.ts', selected: false });
+    expect(b).toHaveFocus();
+    expect(b).toHaveAccessibleDescription('Press Delete to close this file tab.');
+    expect(previewTab).toHaveAttribute('tabindex', '-1');
+    await userEvent.keyboard('{Home}{ArrowRight}{Enter}');
+    const a = screen.getByRole('tab', { name: 'a.ts', selected: true });
+    expect(a).toHaveFocus();
+    const panel = screen.getByRole('tabpanel', { name: 'a.ts' });
+    expect(a).toHaveAttribute('aria-controls', panel.id);
+    await userEvent.tab();
+    expect(panel).toHaveFocus();
+    await userEvent.tab({ shift: true });
+    await userEvent.keyboard('{Delete}');
+    expect(a).not.toBeInTheDocument();
+    expect(b).toHaveFocus();
+    expect(b).toHaveAttribute('aria-selected', 'true');
   });
 
   it('shows images and videos from the project, and offers the folder for files it cannot show', async () => {

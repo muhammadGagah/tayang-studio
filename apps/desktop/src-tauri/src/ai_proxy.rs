@@ -1,10 +1,11 @@
-//! AI images and voice for agents, paid with the user's Tayang credits. Tayang listens on
+//! AI images, voice and sound-effect search for agents. Tayang listens on
 //! 127.0.0.1 (a random port) and gives each agent session `TAYANG_AI_URL` and its own
 //! `TAYANG_AI_TOKEN`. The token is tied to that session's chat, so an agent can only save into its
 //! own folder, and the user's sign-in token never leaves Tayang.
 //!
 //!   POST $TAYANG_AI_URL/image  { "prompt", "aspect"?, "count"?, "out"? }
-//!   POST $TAYANG_AI_URL/voice  { "text", "language"?, "voice"?, "out"? }
+//!   POST $TAYANG_AI_URL/voice  { "text", "language"?, "voice"?, "speakers"?, "out"? }
+//!   POST $TAYANG_AI_URL/sound-effects { "query", "allowPublicCredit"? }
 //!
 //! The answer is `{ "files": [...], "creditsCharged", "creditsLeft" }` with paths relative to the
 //! agent's folder, or `{ "error": "<code>", "message" }`.
@@ -26,7 +27,8 @@ const VOICE_MAX_BYTES: u64 = 60 * 1024 * 1024;
 #[derive(Debug, Clone, PartialEq)]
 pub enum AiJob {
     Image { prompt: String, aspect: Option<String>, count: u32, out: PathBuf },
-    Voice { text: String, language: Option<String>, voice: Option<String>, out: PathBuf },
+    Voice { text: String, language: Option<String>, voice: Option<String>, speakers: Option<[crate::gemini_voice::Speaker; 2]>, out: PathBuf },
+    SoundEffects { query: String, allow_public_credit: bool },
     /// `GET /usage`: the credits and auto-posts left, so the agent knows before it plans.
     Usage,
 }
@@ -285,9 +287,31 @@ pub fn parse_job(path: &str, b: &Value) -> Result<AiJob, String> {
         }
         "/voice" => {
             let t = text("text").filter(|t| !t.trim().is_empty()).ok_or("text is required")?;
-            Ok(AiJob::Voice { text: t, language: text("language"), voice: text("voice"), out: out_path(b.get("out"), "voice", &["mp3"])? })
+            let voice = text("voice");
+            let speakers = b.get("speakers").map(|value| {
+                serde_json::from_value::<[crate::gemini_voice::Speaker; 2]>(value.clone())
+                    .map_err(|_| "speakers must be two objects with name and voice")
+            }).transpose()?;
+            if speakers.is_some() && voice.is_some() {
+                return Err("Use voice for narration or speakers for dialogue".into());
+            }
+            let out = out_path(b.get("out"), "voice", &["mp3"])?;
+            if out.to_string_lossy().contains(':') {
+                return Err("out must be a regular MP3 file inside your folder".into());
+            }
+            Ok(AiJob::Voice { text: t, language: text("language"), voice, speakers, out })
         }
-        _ => Err("Use /image or /voice".into()),
+        "/sound-effects" => {
+            let query = b.get("query").and_then(Value::as_str).map(str::trim)
+                .filter(|s| !s.is_empty() && s.chars().count() <= 120 && !s.chars().any(char::is_control))
+                .ok_or("query must be 1–120 characters on one line")?;
+            let allow_public_credit = match b.get("allowPublicCredit") {
+                Some(value) => value.as_bool().ok_or("allowPublicCredit must be true or false")?,
+                None => false,
+            };
+            Ok(AiJob::SoundEffects { query: query.into(), allow_public_credit })
+        }
+        _ => Err("Use /image, /voice or /sound-effects".into()),
     }
 }
 
@@ -313,9 +337,9 @@ pub fn usage_summary(u: &Value) -> Value {
         "imagesAffordable": credits,
         "voiceMinutesAffordable": credits / 7,
         "message": if credits > 0 {
-            "Use Tayang's /image and /voice for AI pictures and every voice-over"
+            "Tayang credits are available for AI images and ElevenLabs voice-over"
         } else {
-            "No AI credits left: make videos without AI images or voice"
+            "No Tayang AI credits left for cloud images or ElevenLabs voice-over"
         },
     })
 }
@@ -362,7 +386,10 @@ pub async fn run_job(client: &reqwest::Client, base: &str, token: &str, job: AiJ
             }
             ("/v1/ai/image", b, (0..*count as usize).map(|i| nth_path(out, i)).collect(), IMAGE_MAX_BYTES)
         }
-        AiJob::Voice { text, language, voice, out } => {
+        AiJob::Voice { text, language, voice, speakers, out } => {
+            if speakers.is_some() {
+                return Err((400, fail("provider-mismatch", "Two-speaker dialogue requires Gemini TTS in Settings → Video defaults")));
+            }
             let mut b = json!({ "text": text, "clientRequestId": request_id });
             if let Some(l) = language {
                 b["language"] = json!(l);
@@ -373,6 +400,7 @@ pub async fn run_job(client: &reqwest::Client, base: &str, token: &str, job: AiJ
             ("/v1/ai/voice", b, vec![out.clone()], VOICE_MAX_BYTES)
         }
         AiJob::Usage => unreachable!("answered above"),
+        AiJob::SoundEffects { .. } => unreachable!("handled outside Tayang's API"),
     };
     let answer = send(client, reqwest::Method::POST, base, token, path, Some(&body)).await.map_err(refused)?;
     let urls: Vec<String> = match &job {
@@ -382,7 +410,7 @@ pub async fn run_job(client: &reqwest::Client, base: &str, token: &str, job: AiJ
             .map(|a| a.iter().filter_map(|i| i.get("url").and_then(Value::as_str).map(str::to_string)).collect())
             .unwrap_or_default(),
         AiJob::Voice { .. } => answer.get("audioUrl").and_then(Value::as_str).map(|u| vec![u.to_string()]).unwrap_or_default(),
-        AiJob::Usage => Vec::new(),
+        AiJob::Usage | AiJob::SoundEffects { .. } => Vec::new(),
     };
     if urls.is_empty() {
         return Err(refused(CloudError::Provider));
@@ -418,6 +446,14 @@ mod tests {
             _ => panic!(),
         }
         assert!(parse_job("/voice", &json!({ "text": "x", "out": "a.wav" })).is_err());
+        for query in ["", "a\nb", &"a".repeat(121)] {
+            assert!(parse_job("/sound-effects", &json!({ "query": query })).is_err());
+        }
+        assert!(parse_job("/sound-effects", &json!({ "query": "latch", "allowPublicCredit": "true" })).is_err());
+        assert_eq!(
+            parse_job("/sound-effects", &json!({ "query": "latch", "allowPublicCredit": true })).unwrap(),
+            AiJob::SoundEffects { query: "latch".into(), allow_public_credit: true }
+        );
         assert_eq!(parse_action("/autopilot", &json!({ "name": "Kopi" })).unwrap().unwrap().0, "create_autopilot");
         assert!(parse_action("/autopilot", &json!({})).unwrap().is_err());
         let (name, ctx) = parse_action("/autopilot-chat", &json!({ "notes": " sejarah dunia, Instagram " })).unwrap().unwrap();
@@ -473,6 +509,12 @@ mod tests {
         let again = proxy.session_env("c1")[1].1.clone();
         assert_eq!(post(proxy.port, "/image", Some(&token), r#"{"prompt":"x"}"#).await.0, 401);
         assert_eq!(post(proxy.port, "/voice", Some(&again), r#"{"text":"halo"}"#).await.0, 200);
+        assert_eq!(post(proxy.port, "/sound-effects", None, r#"{"query":"door latch"}"#).await.0, 401);
+        assert_eq!(post(proxy.port, "/sound-effects", Some(&again), r#"{"query":" door latch "}"#).await.0, 200);
+        assert_eq!(
+            seen.lock().unwrap().last().unwrap().0,
+            AiJob::SoundEffects { query: "door latch".into(), allow_public_credit: false }
+        );
 
         // Usage is a GET with no body; the jobs stay POST.
         assert_eq!(request(proxy.port, "GET", "/usage", Some(&again), "").await.0, 200);
@@ -504,6 +546,21 @@ mod tests {
         assert_eq!((s["signedIn"].as_bool(), s["credits"].as_i64(), s["posts"].as_i64()), (Some(true), Some(28), Some(5)));
         assert_eq!((s["imagesAffordable"].as_i64(), s["voiceMinutesAffordable"].as_i64()), (Some(28), Some(4)));
         let none = usage_summary(&json!({ "credits": { "remaining": 0 }, "posts": { "remaining": 0 } }));
-        assert!(none["message"].as_str().unwrap().contains("without AI"));
+        assert!(none["message"].as_str().unwrap().contains("ElevenLabs"));
+    }
+
+    #[test]
+    fn voice_accepts_two_speakers_without_changing_existing_voice_requests() {
+        let mut body = json!({
+            "text":"Ayu: Halo\nBima: Pagi", "out":"audio/dialog.mp3",
+            "speakers":[{"name":"Ayu","voice":"Kore"},{"name":"Bima","voice":"Puck"}],
+        });
+        assert!(matches!(parse_job("/voice", &body), Ok(AiJob::Voice { speakers: Some(_), voice: None, .. })));
+        body["voice"] = json!("Kore");
+        assert!(parse_job("/voice", &body).is_err());
+        body.as_object_mut().unwrap().remove("speakers");
+        assert!(matches!(parse_job("/voice", &body), Ok(AiJob::Voice { speakers: None, voice: Some(_), .. })));
+        body["out"] = json!("audio/voice.mp3:stream.mp3");
+        assert!(parse_job("/voice", &body).is_err());
     }
 }

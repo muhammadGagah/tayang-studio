@@ -6,6 +6,7 @@ import type { ChatMessage } from '@tayang/shared';
 vi.mock('@/lib/ipc', () => ({ assetUrl: (p: string) => p }));
 vi.mock('@tauri-apps/plugin-opener', () => ({ openUrl: vi.fn().mockResolvedValue(undefined) }));
 import { openUrl } from '@tauri-apps/plugin-opener';
+import mascot from '@/assets/brand/oyen-expr-default.svg';
 import { MessageList } from '@/components/MessageList';
 import { Markdown } from '@/components/Markdown';
 import '@/i18n';
@@ -50,7 +51,10 @@ describe('Markdown in agent replies', () => {
   it('never renders raw HTML or images', () => {
     const { container } = agent('<script>alert(1)</script>\n\nhi <img src=x onerror="alert(1)"> there\n\n![pic](http://e.com/a.png)');
     expect(container.querySelector('script')).toBeNull();
-    expect(container.querySelector('img:not([alt="Oyen"])')).toBeNull();
+    const images = container.querySelectorAll('img');
+    expect(images).toHaveLength(1);
+    expect(images[0]).toHaveAttribute('src', mascot);
+    expect(images[0]).toHaveAttribute('alt', '');
     expect(container.textContent).toContain('pic');
     expect(container.textContent).toContain('<script>alert(1)</script>');
     expect(container.textContent).toContain('onerror');

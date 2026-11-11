@@ -1,4 +1,4 @@
-import { render, screen } from '@testing-library/react';
+import { render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { vi } from 'vitest';
 import type { AgentQuestion } from '@tayang/shared';
@@ -69,7 +69,12 @@ describe('QuestionCard', () => {
     expect(screen.getByText('opencode asks you')).toBeInTheDocument();
     expect(screen.getByText('Which topic should the video be about?')).toBeInTheDocument();
     const send = screen.getByRole('button', { name: 'Send' });
-    await userEvent.click(screen.getByRole('radio', { name: /What if the Moon vanished/ }));
+    const group = screen.getByRole('group', { name: 'Which topic should the video be about?' });
+    const keyboard = userEvent.setup();
+    await keyboard.tab();
+    expect(within(group).getByRole('radio', { name: /What if you never slept/ })).toHaveFocus();
+    await keyboard.keyboard('{ArrowDown}');
+    expect(within(group).getByRole('radio', { name: /What if the Moon vanished/ })).toBeChecked();
     await userEvent.click(send);
     expect(respond).toHaveBeenCalledWith(
       { action: 'accept', content: { question_0: 'What if the Moon vanished' } },

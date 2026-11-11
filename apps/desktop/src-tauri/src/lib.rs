@@ -1,5 +1,6 @@
 pub mod acp;
 pub mod ai_proxy;
+pub mod api_engine;
 pub mod auth;
 pub mod claude_account;
 pub mod billing;
@@ -9,14 +10,19 @@ pub mod db;
 pub mod device;
 pub mod files;
 pub mod media;
+mod openverse;
+mod gemini_voice;
 pub mod projects;
 pub mod scheduler;
+pub mod skills;
+pub mod skills_github;
 pub mod styles_sync;
 pub mod system;
 pub mod telemetry;
 pub mod types;
 pub mod trace;
 pub mod usage;
+pub mod voice;
 
 use commands::AppState;
 use tauri::Manager;
@@ -45,7 +51,7 @@ pub fn run() {
             let home = app.path().home_dir()?;
             let data = app.path().app_data_dir()?;
             std::fs::create_dir_all(&data)?;
-            let db = db::Db::open(&data.join("tayang.db"))?;
+            let db = db::Db::open(&data.join("tayang.db"))?.with_bundled_styles()?;
             // No agent survives a restart, so nothing can still be working.
             let _ = db.fail_stale_jobs("Tayang was closed while this was running");
             // Also records the real home so later settings updates resolve defaults against it.
@@ -56,6 +62,10 @@ pub fn run() {
             media::sweep_study_dirs(std::path::Path::new(&working));
             app.manage(usage::UsageCache::default());
             app.manage(commands::ClaudeSignIn::default());
+            app.manage(commands::ApiKeys::new(&app.config().identifier));
+            app.manage(commands::EngineInstall::default());
+            app.manage(openverse::Openverse::new(&app.config().identifier));
+            app.manage(gemini_voice::GeminiVoice::new(&app.config().identifier));
             let api_url = styles_sync::effective_api_url(&settings);
             app.manage(AppState {
                 db,
@@ -98,6 +108,26 @@ pub fn run() {
             commands::get_system_info,
             commands::system_locale,
             commands::detect_agents,
+            commands::skills_list,
+            commands::skill_read,
+            commands::skill_save,
+            commands::skill_set_enabled,
+            commands::skill_delete,
+            commands::skill_import,
+            commands::skill_github_fetch,
+            commands::skill_github_install,
+            commands::skill_github_discard,
+            commands::voice_status,
+            commands::voice_key_save,
+            commands::voice_key_clear,
+            commands::voice_studio_check,
+            commands::api_status,
+            commands::api_check,
+            commands::api_try,
+            commands::api_reachable,
+            commands::api_save,
+            commands::api_clear,
+            commands::engine_install,
             commands::check_tools,
             commands::claude_account,
             commands::claude_sign_in,
@@ -105,6 +135,10 @@ pub fn run() {
             commands::claude_sign_out,
             commands::get_settings,
             commands::update_settings,
+            commands::openverse_credentials_saved,
+            commands::update_openverse_credentials,
+            commands::gemini_key_saved,
+            commands::update_gemini_key,
             commands::pick_folder,
             commands::list_projects,
             commands::create_project,
@@ -169,6 +203,7 @@ pub fn run() {
             commands::agent_respond_question,
             commands::media_latest_render,
             commands::latest_render_info,
+            commands::show_video_in_folder,
             commands::newest_video_info,
             commands::video_thumbnail,
             commands::recent_images,

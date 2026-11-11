@@ -1,4 +1,4 @@
-import { render, screen, waitFor, within } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { describe, expect, it, vi } from 'vitest';
 import type { ChatMessage, Project, Style } from '@tayang/shared';
@@ -135,6 +135,21 @@ describe('the @ menu with styles', () => {
     expect(screen.queryByText('attach')).not.toBeInTheDocument();
   });
 
+  it('opens from the toolbar and keeps the composer focused after a pointer selection', async () => {
+    const user = userEvent.setup();
+    setup();
+    const button = screen.getByRole('button', { name: '@ Mention a video' });
+    const box = screen.getByRole('textbox', { name: 'Message' });
+    await user.click(button);
+    const list = screen.getByRole('listbox');
+    expect(button).toHaveAttribute('aria-expanded', 'true');
+    expect(box).toHaveFocus();
+    await user.click(within(list).getByRole('option', { name: /Atlas journey/ }));
+    expect(screen.getByText('@Atlas journey')).toBeInTheDocument();
+    expect(button).toHaveAttribute('aria-expanded', 'false');
+    expect(box).toHaveFocus();
+  });
+
   it('filters both groups by the query', async () => {
     const user = userEvent.setup();
     setup();
@@ -148,17 +163,25 @@ describe('the @ menu with styles', () => {
     const user = userEvent.setup();
     const { onSend } = setup();
     const box = screen.getByRole('textbox', { name: 'Message' });
+    expect(box).toHaveAccessibleDescription(/Shift\+Enter for a new line.*Type @ for suggestions/);
     await user.type(box, 'pakai @');
-    const list = await screen.findByRole('listbox');
-    expect(within(list).getByRole('option', { name: /Kenapa rupiah/ })).toHaveAttribute('aria-selected', 'true');
+    const list = await screen.findByRole('listbox', { name: 'Mention a video or style' });
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+    expect(box).toHaveAttribute('aria-controls', list.id);
+    const firstOption = within(list).getByRole('option', { name: /Kenapa rupiah/, selected: true });
+    expect(box).toHaveAttribute('aria-activedescendant', firstOption.id);
     await user.keyboard('{ArrowDown}');
-    expect(within(list).getByRole('option', { name: /Atlas journey/ })).toHaveAttribute('aria-selected', 'true');
+    const atlasOption = within(list).getByRole('option', { name: /Atlas journey/, selected: true });
+    expect(box).toHaveAttribute('aria-activedescendant', atlasOption.id);
     await user.keyboard('{ArrowUp}{ArrowUp}');
     expect(within(list).getByRole('option', { name: /Mine/ })).toHaveAttribute('aria-selected', 'true');
     await user.keyboard('{ArrowDown}{ArrowDown}{Enter}');
     expect(screen.getByText('@Atlas journey')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Remove the Atlas journey style' })).toBeInTheDocument();
+    expect(screen.getByRole('status')).toHaveTextContent('Added Atlas journey to the message.');
     expect(box).toHaveValue('pakai ');
+    expect(box).toHaveFocus();
+    expect(box).not.toHaveAttribute('aria-activedescendant');
     await user.type(box, 'ini');
     await user.click(screen.getByRole('button', { name: 'Send' }));
     expect(onSend).toHaveBeenCalledWith([
@@ -166,6 +189,62 @@ describe('the @ menu with styles', () => {
       { type: 'style-mention', styleId: 'builtin-atlas', name: 'Atlas journey' },
     ]);
     expect(screen.queryByText('@Atlas journey')).not.toBeInTheDocument();
+  });
+
+  it('keeps composing on IME Enter and dismisses suggestions without moving focus on Escape', async () => {
+    const user = userEvent.setup();
+    const { onSend } = setup();
+    const box = screen.getByRole('textbox', { name: 'Message' });
+    await user.type(box, '@atl');
+    expect(fireEvent.keyDown(box, { key: 'Enter', isComposing: true })).toBe(true);
+    expect(box).toHaveValue('@atl');
+    expect(onSend).not.toHaveBeenCalled();
+    expect(screen.getByRole('listbox')).toBeInTheDocument();
+    fireEvent.compositionStart(box);
+    expect(screen.queryByRole('listbox')).not.toBeInTheDocument();
+    expect(fireEvent.keyDown(box, { key: 'Enter' })).toBe(true);
+    expect(onSend).not.toHaveBeenCalled();
+    fireEvent.compositionEnd(box);
+    expect(screen.getByRole('listbox')).toBeInTheDocument();
+    await user.keyboard('{Escape}');
+    expect(box).toHaveFocus();
+    expect(box).not.toHaveAttribute('aria-activedescendant');
+    expect(document.getElementById(box.getAttribute('aria-controls')!)).toHaveAttribute('hidden');
+    expect(screen.queryByRole('listbox')).not.toBeInTheDocument();
+  });
+
+  it('allows a new line with suggestions open and closes the list when focus leaves', async () => {
+    const user = userEvent.setup();
+    const { onSend } = setup();
+    const box = screen.getByRole('textbox', { name: 'Message' });
+    await user.type(box, '@atl');
+    await user.keyboard('{Shift>}{Enter}{/Shift}');
+    expect(box).toHaveValue('@atl\n');
+    expect(onSend).not.toHaveBeenCalled();
+    expect(screen.queryByRole('listbox')).not.toBeInTheDocument();
+    await user.type(box, '@mine');
+    expect(screen.getByRole('listbox')).toBeInTheDocument();
+    await user.tab();
+    expect(screen.getByRole('button', { name: 'Attach files' })).toHaveFocus();
+    expect(screen.queryByRole('listbox')).not.toBeInTheDocument();
+  });
+
+  it('keeps focus on another control when the composer becomes enabled again', async () => {
+    const user = userEvent.setup();
+    const onSend = vi.fn();
+    const view = (disabled = false) => (
+      <>
+        <button type="button">Open another conversation</button>
+        <Composer chatId={null} onSend={onSend} autoFocus disabled={disabled} />
+      </>
+    );
+    const { rerender } = render(view());
+    expect(screen.getByRole('textbox', { name: 'Message' })).toHaveFocus();
+    rerender(view(true));
+    const other = screen.getByRole('button', { name: 'Open another conversation' });
+    await user.click(other);
+    rerender(view());
+    expect(other).toHaveFocus();
   });
 
   it('shows the hint under the style chip when asked to', async () => {
@@ -197,9 +276,10 @@ describe('the @ menu with styles', () => {
     const user = userEvent.setup();
     setup({ styleHint: undefined });
     await user.type(screen.getByRole('textbox', { name: 'Pesan' }), '@zzz');
-    const list = await screen.findByRole('listbox');
-    expect(within(list).getByText('Gaya')).toBeInTheDocument();
-    expect(within(list).getByText('Tidak ada gaya yang cocok')).toBeInTheDocument();
+    expect(screen.getByText('Gaya')).toBeInTheDocument();
+    expect(screen.getByText('Tidak ada gaya yang cocok')).toBeInTheDocument();
+    expect(screen.getByRole('status')).toHaveTextContent(/Tidak ada/);
+    expect(screen.queryByRole('listbox')).not.toBeInTheDocument();
   });
 });
 

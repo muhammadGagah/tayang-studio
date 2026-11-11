@@ -67,8 +67,11 @@ export function AccountStep() {
           ))}
         </ul>
 
+        <div role="status" className="sr-only">
+          {account && `${t('onboarding.account.signedIn')} · ${account.name || account.email}`}
+        </div>
         {account ? (
-          <div role="status" className="flex items-center gap-4 rounded-xl border border-border bg-card p-4">
+          <div className="flex items-center gap-4 rounded-xl border border-border bg-card p-4">
             <div aria-hidden="true" className="flex size-10 items-center justify-center rounded-full bg-raised text-sm font-semibold">
               {initials(account)}
             </div>
@@ -83,18 +86,16 @@ export function AccountStep() {
           </div>
         ) : (
           <div className="flex flex-col items-start gap-2">
-            <Button className="h-12 px-5 text-[15px]" onClick={() => void signIn()}>
+            <Button className="h-12 px-5 text-[15px]" aria-describedby="onboarding-account-later" onClick={() => void signIn()}>
               {t('onboarding.account.signIn')}
             </Button>
-            <span className="text-[13px] text-text-3">{t('onboarding.account.later')}</span>
+            <span id="onboarding-account-later" className="text-[13px] text-text-3">{t('onboarding.account.later')}</span>
           </div>
         )}
 
-        {error && (
-          <p role="alert" className="m-0 text-[13px] text-orange-light">
-            {error}
-          </p>
-        )}
+        <p role="alert" className="m-0 text-[13px] text-orange-light empty:absolute">
+          {error}
+        </p>
 
         <div className="mt-2 flex items-center gap-4">
           <Button variant="ghost" className="mr-auto h-12 px-0 text-[15px]" onClick={() => navigate({ name: 'requirements' })}>
@@ -103,8 +104,8 @@ export function AccountStep() {
           <Button
             variant={account ? 'primary' : 'secondary'}
             className="h-12 gap-2 px-5 text-[15px]"
-            disabled={finishing}
-            onClick={() => void finish()}
+            aria-disabled={finishing || undefined}
+            onClick={() => { if (!finishing) void finish(); }}
           >
             {account ? t('onboarding.account.start') : t('onboarding.account.skip')}
             <ArrowRight size={18} strokeWidth={2} aria-hidden="true" />

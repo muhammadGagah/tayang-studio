@@ -31,15 +31,12 @@ export const stripFramesToken = (text: string): string => {
 export const FOREGROUND_RULE =
   "Never end your turn by saying what you will do next (\"I'll render it again\"): do it in the same turn. End your turn only when the work is done, or when you need the user to answer or allow something. Run installs, renders and pipelines in the foreground and wait for them to finish before you reply. Never start a long job in the background and end your turn: you can't message the user after your turn ends, and Tayang shows the user that you're still working while your turn runs. If a command needs more than a few minutes, say so first, then run it and wait. Keep command output short: use the command's quiet flag, or end a long install or render with `2>&1 | tail -n 30` and read those last lines for errors; progress bars and install logs only fill your context.";
 
-/**
- * AI images and voiceover through Tayang, paid with the user's credits ($TAYANG_AI_URL and
- * $TAYANG_AI_TOKEN are set on every agent session; see the desktop's ai_proxy.rs).
- */
+/** AI images and the selected voice provider through the agent's local Tayang endpoint. */
 export const AI_ASSETS_RULE =
-  'AI images and voice-over come from Tayang when the user has credits. Check them first: `curl -s "$TAYANG_AI_URL/usage" -H "Authorization: Bearer $TAYANG_AI_TOKEN"` (answers credits, imagesAffordable, voiceMinutesAffordable). ' +
-  'With enough credits, a voice-over comes from Tayang\'s /voice and a picture you can\'t build in code from /image, not another text-to-speech (say, edge-tts, Piper, a pipeline\'s own TTS, a key of your own), stock photos or images from the web. ' +
-  'Image: `curl -s -X POST "$TAYANG_AI_URL/image" -H "Authorization: Bearer $TAYANG_AI_TOKEN" -d \'{"prompt":"<what to draw, in English>","aspect":"9:16","out":"assets/<name>.jpg"}\'` (1 credit per image; aspect 9:16, 16:9 or 1:1; up to 4 with "count"). Voice: `curl -s -X POST "$TAYANG_AI_URL/voice" -H "Authorization: Bearer $TAYANG_AI_TOKEN" -d \'{"text":"<the narration>","language":"id","out":"audio/<name>.mp3"}\'` (about 7 credits per minute). The answer lists the saved files. ' +
-  'Without enough credits (or signed out), make it the way you would without Tayang: a free voice such as the system\'s text-to-speech, and pictures built in code; tell the user once in one short line that Tayang\'s AI voice and images come with credits. Never drop the voice-over because of credits: only the user decides there is none. Text, charts and maps are always built in code.';
+  'Check the selected voice provider and image credits: `curl -s "$TAYANG_AI_URL/usage" -H "Authorization: Bearer $TAYANG_AI_TOKEN"` (answers voiceSource, ownVoice, geminiVoiceReady when selected, imagesAffordable, voiceMinutesAffordable). ' +
+  'Use /voice for the selected provider. When ownVoice is true, use /voice without Tayang credits: Gemini TTS needs geminiVoiceReady, ElevenLabs and Fish Audio use the user\'s key, and VoiceStudio runs locally. The Tayang source needs Tayang credits. Image: `curl -s -X POST "$TAYANG_AI_URL/image" -H "Authorization: Bearer $TAYANG_AI_TOKEN" -d \'{"prompt":"<what to draw, in English>","aspect":"9:16","out":"assets/<name>.jpg"}\'` (1 credit per image; aspect 9:16, 16:9 or 1:1; up to 4 with "count"). ' +
+  'Voice: `curl -s -X POST "$TAYANG_AI_URL/voice" -H "Authorization: Bearer $TAYANG_AI_TOKEN" -d \'{"text":"<the narration>","language":"id","out":"audio/<name>.mp3"}\'`. For Gemini dialogue only, add `"speakers":[{"name":"Ayu","voice":"Kore"},{"name":"Bima","voice":"Puck"}]` and label every nonempty line in text with the matching name and a colon. The answer lists saved files. ' +
+  'If the selected provider is unavailable, report it briefly and use a free voice such as system text-to-speech when possible. If image credits are unavailable, build pictures in code. Text, charts and maps are always built in code.';
 
 /** Tayang's preview and status read the render from renders/; a template pipeline may write it elsewhere. */
 export const RENDERS_RULE =

@@ -10,7 +10,7 @@ import { onAgentUpdate, onPermission } from '@/lib/events';
 /** Every install runs in one shared agent chat. */
 export const SETUP_CHAT = 'setup';
 
-export type InstallStatus = 'missing' | 'key' | 'confirm' | 'running' | 'done' | 'failed';
+export type InstallStatus = 'missing' | 'confirm' | 'running' | 'done' | 'failed';
 
 export interface LogLine {
   id: string;
@@ -29,7 +29,6 @@ export interface ToolInstall {
 export interface StartOpts {
   sys: SystemInfo;
   agent: AgentId;
-  elevenLabsKey?: string;
 }
 
 interface InstallState {
@@ -47,8 +46,6 @@ interface InstallState {
   agent: AgentId | null;
 
   refresh(agent: AgentId): Promise<ToolStatus[]>;
-  /** Show the API key step for a tool. */
-  askKey(tool: ToolId): void;
   start(tool: ToolId, opts: StartOpts): Promise<void>;
   respond(optionId: string | null): Promise<void>;
   /** Back to the plain "Install" button. */
@@ -62,6 +59,8 @@ interface InstallState {
 let unlisten: Promise<() => void>[] = [];
 
 export const useInstall = create<InstallState>((set, get) => {
+  let refreshId = 0;
+  let checkedAgent: AgentId | null = null;
   const patch = (tool: ToolId, p: Partial<ToolInstall>) =>
     set((s) => ({ tools: { ...s.tools, [tool]: { status: 'missing', log: [], ...s.tools[tool], ...p } } }));
 
@@ -115,13 +114,15 @@ export const useInstall = create<InstallState>((set, get) => {
       dropRequests();
       const agent = get().agent;
       try {
-        const statuses = agent ? await get().refresh(agent) : get().statuses;
+        const statuses = agent
+          ? await (agent === checkedAgent ? get().refresh(agent) : checkTools())
+          : get().statuses;
         if (statuses.find((t) => t.id === tool)?.ok) {
           patch(tool, { status: 'done', error: undefined });
           set({ active: null });
         } else {
-          const reply = get().tools[tool]?.reply?.trim();
-          fail(tool, reply ? reply.slice(-400) : i18n.t('errors.cantFindTool'));
+          // The agent's own reply can be a long monologue; the row shows it folded away, under this line.
+          fail(tool, i18n.t('errors.cantFindTool'));
         }
       } catch (e) {
         fail(tool, e instanceof Error ? e.message : String(e));
@@ -139,12 +140,12 @@ export const useInstall = create<InstallState>((set, get) => {
     agent: null,
 
     async refresh(agent) {
-      const statuses = await checkTools(agent);
-      set({ statuses, agent });
+      const id = ++refreshId;
+      checkedAgent = agent;
+      const statuses = await checkTools();
+      if (id === refreshId) set({ statuses, agent });
       return statuses;
     },
-
-    askKey: (tool) => patch(tool, { status: 'key', error: undefined }),
 
     async start(tool, opts) {
       if (get().active || get().closing) return;
@@ -153,7 +154,7 @@ export const useInstall = create<InstallState>((set, get) => {
       try {
         await agentStart(SETUP_CHAT, opts.agent);
         // The agent's failure text reaches the user, so it follows their language too.
-        const text = [buildInstallPrompt(tool, opts.sys, opts.agent, { elevenLabsKey: opts.elevenLabsKey }), languageHint(uiLanguage())].filter(Boolean).join('\n\n');
+        const text = [buildInstallPrompt(tool, opts.sys, opts.agent), languageHint(uiLanguage())].filter(Boolean).join('\n\n');
         await agentPrompt(SETUP_CHAT, [{ type: 'text', text }]);
       } catch (e) {
         if (get().active === tool) fail(tool, agentErrorText(e instanceof Error ? e.message : String(e), opts.agent));
@@ -207,6 +208,8 @@ export const useInstall = create<InstallState>((set, get) => {
     },
 
     reset() {
+      refreshId++;
+      checkedAgent = null;
       unlisten.forEach((p) => void p.then((fn) => fn()));
       unlisten = [];
       set({ statuses: [], tools: {}, active: null, request: null, queue: [], closing: false, agent: null });

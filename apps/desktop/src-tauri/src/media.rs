@@ -31,7 +31,7 @@ impl MediaTools {
 
 /// Builds a command that never flashes a console window on Windows.
 #[allow(unused_mut)]
-fn command(program: impl AsRef<std::ffi::OsStr>) -> Command {
+pub(crate) fn command(program: impl AsRef<std::ffi::OsStr>) -> Command {
     let mut cmd = Command::new(program);
     cmd.env("PATH", crate::system::augmented_path());
     #[cfg(windows)]
@@ -43,7 +43,7 @@ fn command(program: impl AsRef<std::ffi::OsStr>) -> Command {
 }
 
 /// Like `run`, but kills the process and fails when it runs longer than `limit`.
-fn run_within(mut cmd: Command, what: &str, limit: std::time::Duration) -> Result<std::process::Output> {
+pub(crate) fn run_within(mut cmd: Command, what: &str, limit: std::time::Duration) -> Result<std::process::Output> {
     use std::process::Stdio;
     let mut child = cmd
         .stdin(Stdio::null())
@@ -195,15 +195,17 @@ pub fn latest_render_info(folder: &Path) -> Option<FileInfo> {
 /// (unix) and its creation time (macOS, Windows). A download or copy that keeps an old modification
 /// time (`wget`, `curl -R`, `cp -p`, unzip) still changed or was created just now.
 fn changed_at(meta: &std::fs::Metadata) -> Option<std::time::SystemTime> {
-    let mut times = vec![meta.modified().ok(), meta.created().ok()];
+    let latest = meta.modified().ok().max(meta.created().ok());
     #[cfg(unix)]
-    {
+    let latest = {
         use std::os::unix::fs::MetadataExt;
-        if let (Ok(s), Ok(ns)) = (u64::try_from(meta.ctime()), u32::try_from(meta.ctime_nsec())) {
-            times.push(std::time::SystemTime::UNIX_EPOCH.checked_add(std::time::Duration::new(s, ns)));
-        }
-    }
-    times.into_iter().flatten().max()
+        let status_changed = match (u64::try_from(meta.ctime()), u32::try_from(meta.ctime_nsec())) {
+            (Ok(s), Ok(ns)) => std::time::SystemTime::UNIX_EPOCH.checked_add(std::time::Duration::new(s, ns)),
+            _ => None,
+        };
+        latest.max(status_changed)
+    };
+    latest
 }
 
 const IMAGE_EXTS: [&str; 5] = ["png", "jpg", "jpeg", "webp", "gif"];
@@ -1688,6 +1690,7 @@ mod tests {
     }
 
     /// Times in the past (2023): a complete render was last written a while ago.
+    #[cfg(unix)]
     fn set_mtime(p: &Path, secs: u64) {
         let t = std::time::SystemTime::UNIX_EPOCH + std::time::Duration::from_secs(1_700_000_000 + secs);
         std::fs::File::options().write(true).open(p).unwrap().set_modified(t).unwrap();
@@ -1942,7 +1945,8 @@ mod tests {
         assert_eq!(render_name(root).as_deref(), Some("old.mp4"));
         // The owner's layout: one folder per version under the run.
         w("runs/jalur-rempah/v3/out/video.mp4", b"", 20);
-        assert_eq!(newest_video_info(root).unwrap().path, root.join("runs/jalur-rempah/v3/out/video.mp4").to_string_lossy());
+        let video = newest_video_info(root).unwrap();
+        assert_eq!(Path::new(&video.path), root.join("runs/jalur-rempah/v3/out/video.mp4"));
     }
 
     #[test]

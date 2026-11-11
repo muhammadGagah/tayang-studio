@@ -289,14 +289,14 @@ export function WorkingLine({ turn, silent = false }: { turn?: LiveTurn; /** Not
   const quiet = silent && turn?.startedAt !== undefined && Date.now() - turn.startedAt >= SILENT_MS;
   if (turn?.render) {
     return (
-      <span role="status" className="inline-flex items-center gap-2 text-[13px] text-text-3">
+      <span className="inline-flex items-center gap-2 text-[13px] text-text-3">
         <RenderingLabel since={turn.render.startedAt} />
       </span>
     );
   }
   return (
     <span className="flex flex-col gap-1">
-      <span role="status" className="inline-flex items-center gap-2 text-[13px] text-text-3">
+      <span className="inline-flex items-center gap-2 text-[13px] text-text-3">
         <PulseDot />
         {time ? t('activity.workingFor', { time }) : t('activity.working')}
       </span>

@@ -108,23 +108,17 @@ export function FileTree({
     if (opening) void loadDir(dir);
   };
 
-  const rows: { entry: ProjectFile; depth: number }[] = [];
-  const walk = (dir: string, depth: number) => {
-    for (const entry of dirs[dir] ?? []) {
-      rows.push({ entry, depth });
-      if (entry.dir && expanded.has(entry.path)) walk(entry.path, depth + 1);
-    }
-  };
-  walk('', 0);
-
   const row = (entry: ProjectFile, depth: number, showPath = false) => {
     const open = entry.dir && expanded.has(entry.path);
     const active = !entry.dir && entry.path === activePath;
+    const children = open && !showPath ? dirs[entry.path] : undefined;
     return (
-      <li key={entry.path} role="treeitem" aria-level={depth + 1} aria-expanded={entry.dir ? open : undefined} aria-selected={active || undefined}>
+      <li key={entry.path}>
         <button
           type="button"
           title={entry.path}
+          aria-expanded={entry.dir ? open : undefined}
+          aria-current={active || undefined}
           onClick={() => (entry.dir ? toggle(entry.path) : onOpen(entry.path))}
           className={cn(
             'flex h-7 w-full cursor-pointer items-center gap-1.5 rounded-sm pr-2 text-left text-[13px] hover:bg-raised/60',
@@ -152,6 +146,11 @@ export function FileTree({
             <span className="ml-auto min-w-0 truncate pl-2 text-[11px] text-text-3">{entry.path.slice(0, -entry.name.length - 1)}</span>
           )}
         </button>
+        {children && children.length > 0 && (
+          <ul role="list" className="m-0 list-none p-0">
+            {children.map((child) => row(child, depth + 1))}
+          </ul>
+        )}
       </li>
     );
   };
@@ -179,7 +178,11 @@ export function FileTree({
             type="search"
             value={query}
             onChange={(e) => setQuery(e.target.value)}
-            onKeyDown={(e) => e.key === 'Escape' && setQuery('')}
+            onKeyDown={(e) => {
+              if (e.key !== 'Escape' || !query || e.altKey || e.ctrlKey || e.metaKey) return;
+              e.preventDefault();
+              setQuery('');
+            }}
             placeholder={t('workspace.findFiles')}
             aria-label={t('workspace.findFiles')}
             className="min-w-0 flex-1 bg-transparent text-[13px] text-foreground outline-none placeholder:text-text-3"
@@ -187,23 +190,24 @@ export function FileTree({
         </label>
       </div>
       <div className="min-h-0 flex-1 overflow-y-auto px-1 pb-2">
+        <p role="status" className={found?.length === 0 && !error ? 'm-0 px-2 text-xs text-text-3' : 'sr-only'}>
+          {!error && found && (found.length ? t('workspace.matches', { count: found.length }) : t('workspace.noMatches'))}
+        </p>
         {error ? (
           <p role="alert" className="m-0 px-2 text-xs text-orange-light">
             {error}
           </p>
         ) : found ? (
-          found.length ? (
-            <ul role="tree" aria-label={t('workspace.files')} className="m-0 list-none p-0">
+          found.length > 0 && (
+            <ul role="list" aria-label={t('workspace.files')} className="m-0 list-none p-0">
               {found.map((f) => row(f, 0, true))}
             </ul>
-          ) : (
-            <p className="m-0 px-2 text-xs text-text-3">{t('workspace.noMatches')}</p>
           )
-        ) : dirs[''] && rows.length === 0 ? (
+        ) : dirs['']?.length === 0 ? (
           <p className="m-0 px-2 text-xs text-text-3">{t('workspace.empty')}</p>
         ) : (
-          <ul role="tree" aria-label={t('workspace.files')} className="m-0 list-none p-0">
-            {rows.map(({ entry, depth }) => row(entry, depth))}
+          <ul role="list" aria-label={t('workspace.files')} className="m-0 list-none p-0">
+            {dirs['']?.map((entry) => row(entry, 0))}
           </ul>
         )}
       </div>

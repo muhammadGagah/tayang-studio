@@ -6,10 +6,20 @@ export const AGENT_NAMES: Record<AgentId, string> = {
   opencode: 'opencode',
   gemini: 'Gemini CLI',
   codex: 'Codex',
-  /** The only name that is a phrase, not a brand: it follows the language. */
+  antigravity: 'Antigravity CLI',
+  /** Your API (the user's own provider key): the only name that is a phrase, so it follows the language. */
   get custom() {
-    return i18n.t('agents.yourAgent');
+    return i18n.t('agents.yourApi');
   },
+};
+
+/** Where each agent's own install guide is; Your API is set up inside Tayang. */
+export const AGENT_INSTALL_URL: Record<Exclude<AgentId, 'custom'>, string> = {
+  claude: 'https://docs.claude.com/en/docs/claude-code',
+  opencode: 'https://opencode.ai',
+  gemini: 'https://github.com/google-gemini/gemini-cli',
+  codex: 'https://github.com/openai/codex',
+  antigravity: 'https://antigravity.google/docs/getting-started?tab=cli',
 };
 
 /** What to type in a terminal to sign in to each agent. */
@@ -18,6 +28,7 @@ const SIGN_IN_COMMAND: Record<AgentId, string> = {
   opencode: 'opencode auth login',
   gemini: 'gemini',
   codex: 'codex',
+  antigravity: 'agy acp --login',
   custom: '',
 };
 
@@ -30,12 +41,12 @@ export function agentErrorText(message: string | null | undefined, agent: AgentI
   const msg = (message ?? '').trim();
   if (AUTH.test(msg)) {
     const opts = lng ? { lng } : {};
+    // Your API has no sign-in: its key was refused.
+    if (agent === 'custom') return i18n.t('errors.apiKeyRefused', { ...opts, detail: msg });
     // Claude signs in from Tayang (Settings › Agents), not a terminal.
     if (agent === 'claude') return i18n.t('errors.signInClaude', opts);
-    const cmd = SIGN_IN_COMMAND[agent] || i18n.t('errors.yourAgentCommand', opts);
-    const run = agent === 'custom' ? cmd : `\`${cmd}\``;
-    const name = agent === 'custom' ? i18n.t('agents.yourAgent', opts) : AGENT_NAMES[agent];
-    return i18n.t('errors.signIn', { agent: name, command: run, ...opts });
+    const cmd = SIGN_IN_COMMAND[agent];
+    return i18n.t('errors.signIn', { agent: AGENT_NAMES[agent], command: `\`${cmd}\``, ...opts });
   }
   return msg || i18n.t('errors.agentStopped', lng ? { lng } : {});
 }

@@ -1,3 +1,4 @@
+import { useId } from 'react';
 import { useTranslation } from 'react-i18next';
 import type { AgentId, PermissionRequest } from '@tayang/shared';
 import { AgentLogo } from '@/components/AgentLogo';
@@ -23,10 +24,11 @@ export function PermissionCard({
   onRespond(optionId: string | null): void;
 }) {
   const { t } = useTranslation();
+  const title = useId();
   const agent = AGENT_NAMES[agentId];
   const allow = allowOption(request);
   return (
-    <div className="flex flex-col gap-3 rounded-md border border-hairline bg-ink p-3">
+    <div role="group" aria-labelledby={title} className="flex flex-col gap-3 rounded-md border border-hairline bg-ink p-3">
       <div className="flex flex-col gap-1">
         <span className="text-xs text-text-3">{t('permission.askedAgent', { agent })}</span>
         <span className="font-serif text-sm leading-normal text-[#D9D9D9]" style={{ fontFamily: 'Lora, Georgia, serif' }}>
@@ -34,7 +36,7 @@ export function PermissionCard({
         </span>
       </div>
       <div className="flex flex-col gap-2">
-        <span className="flex items-center gap-2 text-xs text-text-3">
+        <span id={title} className="flex items-center gap-2 text-xs text-text-3">
           <AgentLogo id={agentId} size={14} />
           {t('permission.wantsToRun', { agent })}
         </span>

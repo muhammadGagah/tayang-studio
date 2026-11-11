@@ -19,7 +19,7 @@ export function OnboardingHeader({ step, bars }: { step: 1 | 2 | 3 | 4; bars?: b
             ))}
           </div>
         )}
-        <span className="text-[13px] text-text-3">
+        <span aria-current="step" className="text-[13px] text-text-3">
           {t('onboarding.step', { step, total: ONBOARDING_STEPS })}
         </span>
       </div>

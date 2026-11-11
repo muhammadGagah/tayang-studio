@@ -228,6 +228,7 @@ export function Calendar({ today: todayProp }: { today?: Date } = {}) {
 
   const cells = monthCells(cursor.y, cursor.m);
   const todayKey = dateKey(today);
+  const dayFormat = new Intl.DateTimeFormat(locale(), { dateStyle: 'full' });
   const events = useMemo(() => {
     const map: Record<string, ({ p: Project; slot?: undefined; at: Date } | { slot: AutopilotSlot; p?: undefined; at: Date })[]> = {};
     for (const p of projects) {
@@ -286,7 +287,7 @@ export function Calendar({ today: todayProp }: { today?: Date } = {}) {
     <div className="flex h-full flex-wrap content-start gap-6 overflow-y-auto p-8">
       <div className="flex min-w-0 flex-[999_1_520px] flex-col gap-4">
         <div data-tauri-drag-region className="flex flex-wrap items-center gap-2">
-          <h1 className="m-0 mr-auto text-[28px] font-semibold tracking-[-0.01em]">
+          <h1 aria-live="polite" className="m-0 mr-auto text-[28px] font-semibold tracking-[-0.01em]">
             {monthName(cursor.m)} {cursor.y}
           </h1>
           <Button variant="secondary" className="h-9 px-3 text-[13px]" onClick={() => setPicking(true)}>
@@ -348,6 +349,7 @@ export function Calendar({ today: todayProp }: { today?: Date } = {}) {
           <div className="grid grid-cols-7">
             {cells.map((d) => {
               const key = dateKey(d);
+              const date = dayFormat.format(d);
               const inMonth = d.getMonth() === cursor.m;
               return (
                 <div
@@ -368,14 +370,17 @@ export function Calendar({ today: todayProp }: { today?: Date } = {}) {
                     !inMonth && 'bg-[#0B0B0B]',
                   )}
                 >
-                  <span
+                  <time
+                    dateTime={key}
+                    aria-current={key === todayKey ? 'date' : undefined}
                     className={cn(
                       'inline-flex h-6 min-w-6 items-center justify-center self-start rounded-sm font-mono text-xs tabular-nums',
                       key === todayKey ? 'bg-foreground text-ink' : inMonth ? 'text-text-2' : 'text-[#4A4A4A]',
                     )}
                   >
-                    {d.getDate()}
-                  </span>
+                    <span aria-hidden="true">{d.getDate()}</span>
+                    <span className="sr-only">{date}</span>
+                  </time>
                   {(events[key] ?? []).map(({ p, slot, at }) => {
                     if (slot) {
                       const name = autopilots.find((a) => a.id === slot.autopilotId)?.name ?? '';
@@ -386,7 +391,7 @@ export function Calendar({ today: todayProp }: { today?: Date } = {}) {
                           key={slot.id}
                           data-testid="cal-ghost"
                           role="note"
-                          aria-label={t('calendar.ghost.aria', { label, time })}
+                          aria-label={t('calendar.ghost.aria', { label, date, time })}
                           className="flex min-w-0 flex-col gap-0.5 rounded-sm border border-dashed border-[#333] px-2 py-1 text-left text-text-2"
                         >
                           <span className="flex items-center gap-1 font-mono text-[10px] text-text-3">
@@ -426,7 +431,7 @@ export function Calendar({ today: todayProp }: { today?: Date } = {}) {
                             type="button"
                             draggable
                             data-testid="cal-entry"
-                            aria-label={t('calendar.entryAria', { title: p.title, state: stateLabel, time })}
+                            aria-label={t('calendar.entryAria', { title: p.title, state: stateLabel, date, time })}
                             onDragEnd={() => {
                               dragId.current = null;
                             }}

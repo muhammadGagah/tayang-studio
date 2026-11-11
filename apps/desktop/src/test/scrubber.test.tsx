@@ -29,10 +29,12 @@ function setup(frame = 330, scenes?: { name: string; startSec: number; endSec: n
 describe('Scrubber', () => {
   it('exposes slider semantics', () => {
     const { slider } = setup();
-    expect(slider).toHaveAttribute('aria-valuemin', '0');
-    expect(slider).toHaveAttribute('aria-valuemax', '1019');
-    expect(slider).toHaveAttribute('aria-valuenow', '330');
+    expect(slider).toHaveAttribute('type', 'range');
+    expect(slider).toHaveAttribute('min', '0');
+    expect(slider).toHaveAttribute('max', '1019');
+    expect(slider).toHaveValue('330');
     expect(slider).toHaveAttribute('aria-valuetext', '0:11.00');
+    expect(slider).toHaveAccessibleDescription(/Home and End/);
   });
 
   it('steps one frame with ArrowRight', async () => {
@@ -49,19 +51,29 @@ describe('Scrubber', () => {
     expect(onSeek).toHaveBeenCalledWith(360);
   });
 
+  it('accepts native value changes and supports vertical arrows without consuming AT chords', async () => {
+    const { slider, onSeek } = setup();
+    fireEvent.change(slider, { target: { value: '444' } });
+    expect(onSeek).toHaveBeenLastCalledWith(444);
+    slider.focus();
+    await userEvent.keyboard('{ArrowUp}{ArrowDown}{Home}{End}{Control>}{ArrowLeft}{/Control}');
+    expect(onSeek.mock.calls.flat()).toEqual([444, 331, 329, 0, 1019]);
+  });
+
   it('seeks by pointer drag', () => {
     const { slider, onSeek } = setup();
     slider.getBoundingClientRect = () =>
       ({ left: 0, width: 1000, top: 0, height: 56, right: 1000, bottom: 56, x: 0, y: 0, toJSON() {} }) as DOMRect;
     slider.setPointerCapture = () => {};
-    fireEvent.pointerDown(slider, { clientX: 500, pointerId: 1 });
+    fireEvent.pointerDown(slider, { clientX: 500, pointerId: 1, button: 0 });
     const v = onSeek.mock.calls.at(-1)![0] as number;
     expect(Math.abs(v - 510)).toBeLessThanOrEqual(1);
   });
 
   it('shows the scene in the tooltip when scenes are known', () => {
-    setup(330, [{ name: 'Chart', startSec: 9, endSec: 17 }]);
+    const { slider } = setup(330, [{ name: 'Chart', startSec: 9, endSec: 17 }]);
     expect(screen.getByText('0:11.00 · Chart')).toBeInTheDocument();
+    expect(slider).toHaveAttribute('aria-valuetext', '0:11.00 · Chart');
   });
 
   it('shows only the timecode without scenes', () => {

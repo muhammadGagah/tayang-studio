@@ -108,7 +108,15 @@ export function UsagePopover({ children }: { children: ReactNode }) {
   return (
     <Popover open={open} onOpenChange={setOpen}>
       <PopoverTrigger asChild>{children}</PopoverTrigger>
-      <PopoverContent side="top" align="start" className="w-80 gap-0 bg-card p-0">
+      <PopoverContent
+        side="top"
+        align="start"
+        aria-label={t('usage.title')}
+        onCloseAutoFocus={(event) => {
+          if (document.activeElement?.id === 'main-content') event.preventDefault();
+        }}
+        className="w-80 gap-0 bg-card p-0"
+      >
         <div className="flex items-center gap-2 border-b border-border px-4 py-3">
           <span className="text-[14px] font-semibold">{t('usage.title')}</span>
           <span className="text-xs text-text-3">{t('usage.allAgents')}</span>

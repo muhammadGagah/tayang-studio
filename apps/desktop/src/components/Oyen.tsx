@@ -14,6 +14,6 @@ const SRC: Record<OyenMood, string> = {
   surprised: surprisedUrl,
 };
 
-export function Oyen({ mood, size = 28 }: { mood: OyenMood; size?: number }) {
-  return <img src={SRC[mood]} alt="Oyen" width={size} height={size} style={{ width: size, height: size }} />;
+export function Oyen({ mood, size = 28, decorative = false }: { mood: OyenMood; size?: number; decorative?: boolean }) {
+  return <img src={SRC[mood]} alt={decorative ? '' : 'Oyen'} width={size} height={size} style={{ width: size, height: size }} />;
 }

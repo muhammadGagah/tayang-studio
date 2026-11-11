@@ -82,6 +82,19 @@ describe('App sidebar resizing', () => {
     expect(handle).toHaveAttribute('aria-controls', 'app-sidebar');
   });
 
+  it('offers a keyboard skip link and moves focus to the main area after sidebar navigation', async () => {
+    await renderApp();
+    const keyboard = userEvent.setup();
+    const main = screen.getByRole('main');
+    await keyboard.tab();
+    expect(screen.getByRole('link', { name: 'Skip to main content' })).toHaveFocus();
+    await keyboard.keyboard('{Enter}');
+    expect(main).toHaveFocus();
+
+    await keyboard.click(screen.getByRole('link', { name: 'Videos' }));
+    expect(screen.getByRole('main')).toHaveFocus();
+  });
+
   it('drags wider within its max, and saves the width', async () => {
     const { handle, panel } = await renderApp();
     drag(handle, 232, 300);

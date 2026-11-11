@@ -2,6 +2,8 @@ import { describe, expect, it } from 'vitest';
 import type { Project, Settings, Style, SystemInfo } from '@tayang/shared';
 import {
   FRAME_CHECK_PROMPT,
+  BUILTIN_SKILLS,
+  userSkillsText,
   FRAMES_CHECKED_TOKEN,
   hasFramesChecked,
   stripFramesToken,
@@ -52,7 +54,6 @@ describe('install', () => {
     expect(installCommands('ytdlp', bare, 'claude')).toContain(
       'curl -L -o ~/.local/bin/yt-dlp https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp_macos',
     );
-    expect(installCommands('elevenlabs-mcp', bare, 'claude')[0]).toBe('curl -LsSf https://astral.sh/uv/install.sh | sh');
   });
   it('linux sudo installs are handed to the user', () => {
     expect(needsSudo('chrome', apt)).toBe(true);
@@ -79,20 +80,6 @@ describe('install', () => {
     expect(manualInstallUrl('chrome', mac)).toBeNull();
     expect(manualInstallUrl('chrome', apt)).toBeNull();
     expect(manualInstallUrl('ffmpeg', bare)).toBeNull();
-  });
-  it('elevenlabs', () => {
-    expect(installCommands('elevenlabs-mcp', mac, 'claude')).toEqual([
-      'brew install uv',
-      'claude mcp add -s user elevenlabs -e ELEVENLABS_API_KEY=sk_•••• -- uvx elevenlabs-mcp',
-    ]);
-    const p = buildInstallPrompt('elevenlabs-mcp', mac, 'claude', { elevenLabsKey: 'sk_real' });
-    expect(p).toContain('ELEVENLABS_API_KEY=sk_real');
-    // User scope, so the server works in every project folder, not just the setup folder.
-    expect(p).toContain('claude mcp add -s user elevenlabs');
-    const o = buildInstallPrompt('elevenlabs-mcp', mac, 'codex', { elevenLabsKey: 'sk_real' });
-    expect(o).toContain('uvx elevenlabs-mcp');
-    expect(o).toContain('sk_real');
-    expect(o).toContain('user-level');
   });
 });
 
@@ -268,5 +255,26 @@ describe('frames-checked marker', () => {
     expect(stripFramesToken('Selesai. [')).toBe('Selesai.');
     expect(stripFramesToken('Selesai [tayang:other] kok')).toBe('Selesai [tayang:other] kok');
     expect(stripFramesToken('Array [1] x')).toBe('Array [1] x');
+  });
+});
+
+describe('user skills', () => {
+  const skill = (id: string, enabled: boolean) => ({ id, description: `Use for ${id}.\n  More.`, enabled, path: `/data/user-skills/skills/${id}/SKILL.md` });
+
+  it('lists only the skills that are on, with where to read them', () => {
+    const text = userSkillsText([skill('hooks', true), skill('off', false)]);
+    expect(text).toContain('- hooks: Use for hooks. More. (/data/user-skills/skills/hooks/SKILL.md)');
+    expect(text).not.toContain('off');
+  });
+
+  it('says nothing when none are on', () => {
+    expect(userSkillsText([skill('off', false)])).toBe('');
+  });
+
+  it('shows the built-in skill with its description and no frontmatter', () => {
+    const [builtin] = BUILTIN_SKILLS;
+    expect(builtin.id).toBe('tayang-studio');
+    expect(builtin.description).toMatch(/^Use whenever you are running inside Tayang Studio/);
+    expect(builtin.body.startsWith('# Tayang Studio')).toBe(true);
   });
 });

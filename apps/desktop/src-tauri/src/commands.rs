@@ -70,23 +70,54 @@ fn is_posix_default(l: &str) -> bool {
 }
 
 #[tauri::command]
-pub async fn detect_agents() -> CmdResult<Vec<AgentInfo>> {
-    tauri::async_runtime::spawn_blocking(|| system::detect_agents(&RealExec))
+pub async fn detect_agents(app: AppHandle) -> CmdResult<Vec<AgentInfo>> {
+    let mut agents = tauri::async_runtime::spawn_blocking(|| system::detect_agents(&RealExec))
         .await
-        .map_err(err)
+        .map_err(err)?;
+    agents.push(api_agent_info(&app).await);
+    Ok(agents)
 }
 
 #[tauri::command]
-pub async fn check_tools(app: AppHandle, agent: AgentId) -> CmdResult<Vec<ToolStatus>> {
-    let claude = claude_config_dir(&app)?;
-    tauri::async_runtime::spawn_blocking(move || system::check_tools(&RealExec, agent, &claude))
-        .await
-        .map_err(err)
+pub async fn check_tools() -> CmdResult<Vec<ToolStatus>> {
+    tauri::async_runtime::spawn_blocking(|| {
+        // The user may have just installed a tool in their terminal: read their shell's PATH again.
+        system::refresh_shell_path();
+        system::check_tools(&RealExec)
+    })
+    .await
+    .map_err(err)
 }
 
 #[tauri::command]
 pub fn get_settings(state: State<'_, AppState>) -> Settings {
     state.db.get_settings(&state.home)
+}
+
+#[tauri::command]
+pub async fn openverse_credentials_saved(openverse: State<'_, crate::openverse::Openverse>) -> Result<bool, &'static str> {
+    openverse.credentials_saved().await
+}
+
+#[tauri::command]
+pub async fn update_openverse_credentials(
+    openverse: State<'_, crate::openverse::Openverse>,
+    credentials: Option<crate::openverse::Credentials>,
+) -> Result<(), &'static str> {
+    openverse.update_credentials(credentials).await
+}
+
+#[tauri::command]
+pub async fn gemini_key_saved(gemini: State<'_, crate::gemini_voice::GeminiVoice>) -> Result<bool, &'static str> {
+    gemini.key_saved().await
+}
+
+#[tauri::command]
+pub async fn update_gemini_key(
+    gemini: State<'_, crate::gemini_voice::GeminiVoice>,
+    key: Option<String>,
+) -> Result<(), &'static str> {
+    gemini.update_key(key).await
 }
 
 #[tauri::command]
@@ -994,8 +1025,7 @@ fn agent_folder(state: &AppState, chat_id: &str) -> Option<PathBuf> {
     resolve_cwd(&state.working(), chat_id, folder.as_deref()).ok()
 }
 
-/// Starts the agents' AI endpoint (see `ai_proxy`) and keeps it in the app state. Jobs run with the
-/// signed-in user's token, which never leaves Rust.
+/// Starts the agent endpoint. Tayang cloud jobs use the signed-in user's token inside Rust.
 pub async fn start_ai_proxy(handle: AppHandle) {
     let for_folder = handle.clone();
     let folder_for = Arc::new(move |chat: &str| for_folder.try_state::<AppState>().and_then(|s| agent_folder(&s, chat)));
@@ -1003,12 +1033,69 @@ pub async fn start_ai_proxy(handle: AppHandle) {
     let run: crate::ai_proxy::Runner = Arc::new(move |job, folder| {
         let handle = for_run.clone();
         Box::pin(async move {
-            let (Some(state), Some(auth)) = (handle.try_state::<AppState>(), handle.try_state::<Arc<Auth>>()) else {
-                return Err((503, serde_json::json!({ "error": "unavailable", "message": "Tayang is still starting" })));
-            };
+            let starting = || (503, serde_json::json!({ "error": "unavailable", "message": "Tayang is still starting" }));
+            let state = handle.try_state::<AppState>().ok_or_else(starting)?;
+            let settings = state.db.get_settings(&state.home);
+            if let crate::ai_proxy::AiJob::SoundEffects { query, allow_public_credit } = &job {
+                let openverse = handle.try_state::<crate::openverse::Openverse>().ok_or_else(starting)?;
+                return openverse.search(settings.openverse_sound_effects, query, *allow_public_credit).await;
+            }
+            let gemini = handle.try_state::<crate::gemini_voice::GeminiVoice>().ok_or_else(starting)?;
+            let source = settings.voice_source;
+            let use_gemini = source == VoiceSource::Gemini;
+            if let crate::ai_proxy::AiJob::Voice { text, voice, speakers, out, .. } = &job {
+                if use_gemini {
+                    if text.chars().count() > 5000 {
+                        return Err((400, serde_json::json!({"error":"invalid","message":"Split Gemini narration into chunks of at most 5000 characters"})));
+                    }
+                    gemini.generate(text, voice.as_deref(), speakers.as_ref(), &folder, out, &state.media)
+                        .await.map_err(crate::gemini_voice::agent_error)?;
+                    return Ok(serde_json::json!({
+                        "files":[out.to_string_lossy().replace('\\', "/")],
+                        "provider":"gemini",
+                        "creditsCharged":0,
+                        "creditsLeft":null,
+                    }));
+                }
+            }
+            let auth = handle.try_state::<Arc<Auth>>().ok_or_else(starting)?;
             let auth = auth.inner().clone();
             let base = api_base(&state);
-            let Some(token) = auth.token(&base).await else {
+            if let crate::ai_proxy::AiJob::Voice { text, language, out, .. } = &job {
+                if source != VoiceSource::Tayang {
+                    let key = match (source.key_account(), handle.try_state::<ApiKeys>()) {
+                        (Some(account), Some(keys)) => keys.get_account(account).await.ok().flatten(),
+                        _ => None,
+                    };
+                    let setup = crate::voice::VoiceSetup { source, key, base: source.base().into() };
+                    return crate::voice::speak(auth.client(), &setup, text, language.as_deref(), out, &folder).await;
+                }
+            }
+            let token = auth.token(&base).await;
+            if job == crate::ai_proxy::AiJob::Usage {
+                let mut usage = match token {
+                    Some(token) => match crate::ai_proxy::run_job(auth.client(), &base, &token, job, &folder).await {
+                        Ok(usage) => usage,
+                        Err(error) if source == VoiceSource::Tayang => return Err(error),
+                        Err(_) => serde_json::json!({"signedIn":true,"credits":0,"imagesAffordable":0,"voiceMinutesAffordable":0,"posts":0}),
+                    },
+                    None => serde_json::json!({"signedIn":false,"credits":0,"imagesAffordable":0,"voiceMinutesAffordable":0,"posts":0}),
+                };
+                if source != VoiceSource::Tayang {
+                    usage = crate::voice::usage_with_own_voice(Some(usage), source);
+                }
+                usage["voiceSource"] = serde_json::json!(source);
+                usage["voiceProvider"] = if source == VoiceSource::Tayang {
+                    serde_json::json!("elevenlabs")
+                } else {
+                    serde_json::json!(source)
+                };
+                if use_gemini {
+                    usage["geminiVoiceReady"] = serde_json::json!(gemini.key_saved().await.unwrap_or(false));
+                }
+                return Ok(usage);
+            }
+            let Some(token) = token else {
                 return Err((401, serde_json::json!({ "error": "signed-out", "message": "The user isn't signed in to Tayang: make this without AI images or voice" })));
             };
             crate::ai_proxy::run_job(auth.client(), &base, &token, job, &folder).await
@@ -1162,7 +1249,7 @@ pub fn chat_kind(chat_id: &str, has_project: bool) -> &'static str {
 /// opencode logs a failed model call (a free model's usage limit) and then never answers the prompt:
 /// its log, for the session to watch. None for other agents.
 fn error_log(agent: AgentId) -> Option<PathBuf> {
-    if agent != AgentId::Opencode {
+    if !matches!(agent, AgentId::Opencode | AgentId::Custom) {
         return None;
     }
     let home = crate::system::home_dir()?;
@@ -1186,6 +1273,158 @@ fn session_options(agent: AgentId, plugin: Option<&Path>, skills: bool) -> crate
         });
     }
     crate::acp::SessionOptions { meta: Some(meta), env, auto: false, use_modes, mode_timeout: None, model: None, error_log: error_log(agent), usage_log: None }
+}
+
+/// Adds a local plugin to a Claude session that has `_meta` (sessions without it get no plugins).
+fn add_plugin(options: &mut crate::acp::SessionOptions, path: &Path) {
+    let Some(meta) = options.meta.as_mut() else { return };
+    let entry = serde_json::json!({ "type": "local", "path": path.to_string_lossy() });
+    match meta["claudeCode"]["options"]["plugins"].as_array_mut() {
+        Some(list) => list.push(entry),
+        None => meta["claudeCode"] = serde_json::json!({ "options": { "plugins": [entry] } }),
+    }
+}
+
+fn skills_root(app: &AppHandle) -> CmdResult<PathBuf> {
+    crate::skills::root(&app.path().app_data_dir().map_err(err)?)
+}
+
+/// The user's own skills, on and off.
+#[tauri::command]
+pub fn skills_list(app: AppHandle) -> CmdResult<Vec<crate::skills::Skill>> {
+    Ok(crate::skills::list(&skills_root(&app)?))
+}
+
+#[tauri::command]
+pub fn skill_read(app: AppHandle, id: String) -> CmdResult<crate::skills::SkillDetail> {
+    crate::skills::read(&skills_root(&app)?, &id)
+}
+
+/// Creates a skill (no `id`) or saves an existing one's description and instructions.
+#[tauri::command]
+pub fn skill_save(
+    app: AppHandle,
+    id: Option<String>,
+    name: String,
+    description: String,
+    body: String,
+) -> CmdResult<crate::skills::Skill> {
+    let root = skills_root(&app)?;
+    match id {
+        Some(id) => crate::skills::update(&root, &id, &description, &body),
+        None => crate::skills::create(&root, &name, &description, &body),
+    }
+}
+
+#[tauri::command]
+pub fn skill_set_enabled(app: AppHandle, id: String, enabled: bool) -> CmdResult<crate::skills::Skill> {
+    crate::skills::set_enabled(&skills_root(&app)?, &id, enabled)
+}
+
+#[tauri::command]
+pub fn skill_delete(app: AppHandle, id: String) -> CmdResult<()> {
+    crate::skills::delete(&skills_root(&app)?, &id)
+}
+
+/// Adds a skill from a SKILL.md file or a folder with one.
+#[tauri::command]
+pub fn skill_import(app: AppHandle, path: String) -> CmdResult<crate::skills::Skill> {
+    crate::skills::import(&skills_root(&app)?, Path::new(&path))
+}
+
+/// Skills found at a GitHub link, waiting in a download for the user to choose.
+#[derive(serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SkillDownload {
+    id: String,
+    skills: Vec<crate::skills_github::FoundSkill>,
+}
+
+/// Downloads the repo at a GitHub link and lists the skills in it.
+#[tauri::command]
+pub async fn skill_github_fetch(app: AppHandle, url: String) -> CmdResult<SkillDownload> {
+    use crate::skills_github as gh;
+    let link = gh::parse_link(&url)?;
+    let data = app.path().app_data_dir().map_err(err)?;
+    let client = api_client(std::time::Duration::from_secs(90))?;
+    let mut resp = client.get(link.archive_url()).send().await.map_err(|_| "Couldn't reach GitHub. Are you online?".to_string())?;
+    match resp.status().as_u16() {
+        200..=299 => {}
+        404 => return Err("Nothing at that link. Check it, and note that private repos can't be added".into()),
+        code => return Err(format!("GitHub didn't send the repo (error {code}). Try again in a minute")),
+    }
+    let too_big = || format!("That repo is over {} MB, too big to add skills from", gh::DOWNLOAD_LIMIT / 1024 / 1024);
+    if resp.content_length().is_some_and(|n| n > gh::DOWNLOAD_LIMIT) {
+        return Err(too_big());
+    }
+    let mut bytes = Vec::new();
+    while let Some(chunk) = resp.chunk().await.map_err(|_| "The download stopped. Try again".to_string())? {
+        bytes.extend_from_slice(&chunk);
+        if bytes.len() as u64 > gh::DOWNLOAD_LIMIT {
+            return Err(too_big());
+        }
+    }
+    let id = uuid::Uuid::new_v4().to_string();
+    let dir = gh::download_dir(&data, &id)?;
+    let found = tokio::task::spawn_blocking(move || {
+        let result = gh::unpack(&bytes, &dir).and_then(|_| gh::find_skills(&dir, &link.path));
+        match result {
+            Ok(skills) => Ok(skills.into_iter().map(|s| gh::FoundSkill { source: link.folder_url(&s.folder), ..s }).collect()),
+            Err(e) => {
+                let _ = std::fs::remove_dir_all(&dir);
+                Err(e)
+            }
+        }
+    })
+    .await
+    .map_err(err)??;
+    Ok(SkillDownload { id, skills: found })
+}
+
+/// One skill the user chose from a download.
+#[derive(serde::Deserialize)]
+pub struct SkillPick {
+    folder: String,
+    source: String,
+}
+
+#[derive(serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SkillInstall {
+    added: Vec<crate::skills::Skill>,
+    /// "folder: why" for each that couldn't be added.
+    failed: Vec<String>,
+}
+
+/// Adds the chosen skills from a download (each with its files), then removes the download.
+#[tauri::command]
+pub fn skill_github_install(app: AppHandle, id: String, picks: Vec<SkillPick>) -> CmdResult<SkillInstall> {
+    let dir = crate::skills_github::download_dir(&app.path().app_data_dir().map_err(err)?, &id)?;
+    if !dir.is_dir() {
+        return Err("That download is gone. Paste the link again".into());
+    }
+    let root = skills_root(&app)?;
+    let base = dir.canonicalize().map_err(err)?;
+    let (mut added, mut failed) = (Vec::new(), Vec::new());
+    for p in picks {
+        let folder = dir.join(&p.folder);
+        let inside = folder.canonicalize().is_ok_and(|f| f.starts_with(&base));
+        let result = if inside { crate::skills::import_from(&root, &folder, &p.source) } else { Err("not in the download".into()) };
+        match result {
+            Ok(s) => added.push(s),
+            Err(e) => failed.push(format!("{}: {e}", if p.folder.is_empty() { "SKILL.md" } else { &p.folder })),
+        }
+    }
+    let _ = std::fs::remove_dir_all(&dir);
+    Ok(SkillInstall { added, failed })
+}
+
+/// Throws away a download the user closed without adding anything.
+#[tauri::command]
+pub fn skill_github_discard(app: AppHandle, id: String) -> CmdResult<()> {
+    let dir = crate::skills_github::download_dir(&app.path().app_data_dir().map_err(err)?, &id)?;
+    let _ = std::fs::remove_dir_all(dir);
+    Ok(())
 }
 
 /// Tayang's own Claude Code config folder (see `claude_account`), created on first use.
@@ -1293,11 +1532,7 @@ pub async fn agent_start(
     agent_id: AgentId,
     auto: Option<bool>,
 ) -> CmdResult<bool> {
-    let mut command = system::acp_command(agent_id)
-        .ok_or("Pick an agent first: custom agents have no start command yet")?;
-    let program = command[0].clone();
-    let found = system::agent_program(&RealExec, agent_id).ok_or_else(|| format!("Can't find {program} on this computer"))?;
-    command[0] = found.to_string_lossy().into_owned();
+    let (command, launch_env) = agent_launch(&app, agent_id).await?;
     let folder = project_folder_for_chat(&state, &chat_id)?;
     let cwd = resolve_cwd(&state.working(), &chat_id, folder.as_deref())?;
     let resource_dir = app.path().resource_dir().ok();
@@ -1308,7 +1543,18 @@ pub async fn agent_start(
         None
     };
     let mut options = session_options(agent_id, plugin.as_deref(), skills);
+    // The user's own skills (the Skills screen) load as a second plugin.
+    if agent_id == AgentId::Claude && skills {
+        if let Some(mine) = app.path().app_data_dir().ok().and_then(|d| crate::skills::root(&d).ok()).and_then(|r| crate::skills::plugin(&r)) {
+            add_plugin(&mut options, &mine);
+        }
+    }
     options.env.extend(claude_env(&app, agent_id)?);
+    if agent_id == AgentId::Custom {
+        options.error_log = launch_env.iter().find(|(name, _)| name == "XDG_DATA_HOME")
+            .map(|(_, data)| Path::new(data).join("opencode").join("log").join("opencode.log"));
+    }
+    options.env.extend(launch_env);
     options.auto = wants_auto(&chat_id, auto.unwrap_or(false));
     options.model = picked_model(&state, agent_id);
     options.usage_log = app.path().app_data_dir().ok().map(|dir| crate::acp::UsageLog {
@@ -1378,15 +1624,13 @@ impl crate::acp::AcpSink for QuietSink {
 /// before any chat with that agent has run). None when the agent doesn't report models.
 #[tauri::command]
 pub async fn agent_models(app: AppHandle, state: State<'_, AppState>, agent_id: AgentId) -> CmdResult<Option<AgentModels>> {
-    let mut command = system::acp_command(agent_id).ok_or("This agent has no start command")?;
-    let program = command[0].clone();
-    let found = system::agent_program(&RealExec, agent_id).ok_or_else(|| format!("Can't find {program} on this computer"))?;
-    command[0] = found.to_string_lossy().into_owned();
+    let (command, launch_env) = agent_launch(&app, agent_id).await?;
     let cwd = app.path().app_cache_dir().map_err(err)?.join("model-probe");
     std::fs::create_dir_all(&cwd).map_err(err)?;
     let probe = format!("models-{}", agent_key(agent_id));
     let mut options = session_options(agent_id, None, false);
     options.env.extend(claude_env(&app, agent_id)?);
+    options.env.extend(launch_env);
     state.acp.start_with(&probe, &command, &cwd, Arc::new(QuietSink), options).await.map_err(err)?;
     let models = state.acp.models(&probe).ok().flatten();
     let _ = state.acp.stop(&probe).await;
@@ -1800,6 +2044,20 @@ pub fn latest_render_info(state: State<'_, AppState>, project_id: String) -> Cmd
     Ok(media::latest_render_info(&folder))
 }
 
+/// Shows a video in the file manager: its newest render selected, or its project folder before there is
+/// one. The path is found here, so the webview can't ask to show any other file.
+#[tauri::command]
+pub async fn show_video_in_folder(app: AppHandle, state: State<'_, AppState>, project_id: String) -> CmdResult<()> {
+    let folder = project_folder(&state, &project_id)?;
+    let f = folder.clone();
+    let video = tauri::async_runtime::spawn_blocking(move || media::latest_render(&f)).await.map_err(err)?;
+    use tauri_plugin_opener::OpenerExt;
+    match video {
+        Some(v) => app.opener().reveal_item_in_dir(v).map_err(err),
+        None => app.opener().open_path(folder.to_string_lossy(), None::<&str>).map_err(err),
+    }
+}
+
 /// The newest `*.mp4` where renders land (empty too), for spotting a render that is being written.
 #[tauri::command]
 pub async fn newest_video_info(state: State<'_, AppState>, project_id: String) -> CmdResult<Option<crate::types::FileInfo>> {
@@ -1972,6 +2230,337 @@ pub fn write_brief(state: State<'_, AppState>, project_id: String, brief: String
     let folder = project_folder(&state, &project_id)?;
     projects::write_project_brief(&folder, &brief)
         .map_err(|e| format!("Can't write the project brief: {e}"))
+}
+
+// ---- Your API (the `custom` agent: opencode with the user's provider, see api_engine) ----
+
+/// API keys in the OS keychain, scoped to this app profile.
+pub struct ApiKeys(String);
+
+impl ApiKeys {
+    pub fn new(profile: &str) -> Self {
+        Self(profile.into())
+    }
+
+    fn account(&self) -> String {
+        format!("{}:{}", crate::api_engine::KEY_ACCOUNT, self.0)
+    }
+
+    async fn get(&self, base: &str) -> CmdResult<Option<String>> {
+        use crate::auth::TokenStore;
+        let account = self.account();
+        let base = base.to_owned();
+        tauri::async_runtime::spawn_blocking(move || {
+            let value = KeyringStore.get(&account).map_err(err)?;
+            let Some(value) = value else { return Ok(None) };
+            let (saved_base, key): (String, String) = serde_json::from_str(&value).map_err(|_| "Invalid saved provider credential".to_string())?;
+            Ok((base == saved_base).then_some(key))
+        }).await.map_err(err)?
+    }
+
+    async fn set(&self, base: &str, key: String) -> CmdResult<()> {
+        use crate::auth::TokenStore;
+        let account = self.account();
+        let value = serde_json::to_string(&(base, key)).map_err(err)?;
+        tauri::async_runtime::spawn_blocking(move || KeyringStore.set(&account, &value)).await.map_err(err)?.map_err(err)
+    }
+
+    async fn delete(&self) -> CmdResult<()> {
+        use crate::auth::TokenStore;
+        let account = self.account();
+        tauri::async_runtime::spawn_blocking(move || KeyringStore.delete(&account)).await.map_err(err)?.map_err(err)
+    }
+
+    async fn get_account(&self, account: &str) -> CmdResult<Option<String>> {
+        use crate::auth::TokenStore;
+        let account = format!("{account}:{}", self.0);
+        tauri::async_runtime::spawn_blocking(move || KeyringStore.get(&account)).await.map_err(err)?.map_err(err)
+    }
+
+    async fn set_account(&self, account: &str, key: String) -> CmdResult<()> {
+        use crate::auth::TokenStore;
+        let account = format!("{account}:{}", self.0);
+        tauri::async_runtime::spawn_blocking(move || KeyringStore.set(&account, &key)).await.map_err(err)?.map_err(err)
+    }
+
+    async fn delete_account(&self, account: &str) -> CmdResult<()> {
+        use crate::auth::TokenStore;
+        let account = format!("{account}:{}", self.0);
+        tauri::async_runtime::spawn_blocking(move || KeyringStore.delete(&account)).await.map_err(err)?.map_err(err)
+    }
+}
+
+// ---- the user's own voice (Fish Audio or VoiceStudio, see voice) ----
+
+/// What Settings › Tools shows about the voice sources: which keys are saved.
+#[derive(serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct VoiceStatus {
+    has_eleven_key: bool,
+    has_fish_key: bool,
+}
+
+/// The keychain account of a source that has an API key, and its name in Settings.
+fn voice_key_source(source: crate::types::VoiceSource) -> CmdResult<(&'static str, &'static str)> {
+    let account = source.key_account().ok_or("That voice source has no API key")?;
+    Ok((account, if source == crate::types::VoiceSource::Elevenlabs { "elevenlabs" } else { "fishaudio" }))
+}
+
+#[tauri::command]
+pub async fn voice_status(keys: State<'_, ApiKeys>) -> CmdResult<VoiceStatus> {
+    let mut saved = [false, false];
+    for (i, source) in [crate::types::VoiceSource::Elevenlabs, crate::types::VoiceSource::Fishaudio].into_iter().enumerate() {
+        if let Some(account) = source.key_account() {
+            saved[i] = keys.get_account(account).await.ok().flatten().is_some_and(|k| !k.is_empty());
+        }
+    }
+    Ok(VoiceStatus { has_eleven_key: saved[0], has_fish_key: saved[1] })
+}
+
+/// Checks the source's API key (no `key`: the saved one) and, when it is good, saves it and makes
+/// that source the voice source. A refused key changes nothing.
+#[tauri::command]
+pub async fn voice_key_save(
+    state: State<'_, AppState>,
+    keys: State<'_, ApiKeys>,
+    source: crate::types::VoiceSource,
+    key: Option<String>,
+) -> CmdResult<(crate::voice::VoiceCheck, Settings)> {
+    let (account, name) = voice_key_source(source)?;
+    let typed = key.map(|k| k.trim().to_string()).filter(|k| !k.is_empty());
+    let key = match &typed {
+        Some(k) => k.clone(),
+        None => keys.get_account(account).await?.unwrap_or_default(),
+    };
+    let client = api_client(std::time::Duration::from_secs(20))?;
+    let check = crate::voice::key_check(&client, source, source.base(), &key).await;
+    if !check.ok {
+        return Ok((check, state.db.get_settings(&state.home)));
+    }
+    if let Some(k) = typed {
+        keys.set_account(account, k).await?;
+    }
+    let settings = state.db.update_settings(serde_json::json!({ "voiceSource": name })).map_err(err)?;
+    Ok((check, settings))
+}
+
+/// Forgets the source's API key; the voice source goes back to Tayang when it was that source.
+#[tauri::command]
+pub async fn voice_key_clear(state: State<'_, AppState>, keys: State<'_, ApiKeys>, source: crate::types::VoiceSource) -> CmdResult<Settings> {
+    let (account, _) = voice_key_source(source)?;
+    keys.delete_account(account).await?;
+    let settings = state.db.get_settings(&state.home);
+    if settings.voice_source != source {
+        return Ok(settings);
+    }
+    state.db.update_settings(serde_json::json!({ "voiceSource": "tayang" })).map_err(err)
+}
+
+/// Whether VoiceStudio is open on this computer.
+#[tauri::command]
+pub async fn voice_studio_check() -> CmdResult<crate::voice::VoiceCheck> {
+    let client = api_client(std::time::Duration::from_secs(5))?;
+    Ok(crate::voice::voicestudio_check(&client, crate::voice::VOICESTUDIO_BASE).await)
+}
+
+/// One engine download at a time.
+#[derive(Default)]
+pub struct EngineInstall(pub tokio::sync::Mutex<()>);
+
+/// The download's progress, `{ done, total }` in bytes.
+pub const ENGINE_PROGRESS_EVENT: &str = "engine://progress";
+
+fn api_client(timeout: std::time::Duration) -> CmdResult<reqwest::Client> {
+    reqwest::Client::builder()
+        .timeout(timeout)
+        .redirect(reqwest::redirect::Policy::none())
+        .user_agent(concat!("tayang-studio/", env!("CARGO_PKG_VERSION")))
+        .build()
+        .map_err(err)
+}
+
+/// What Your API has: the provider, whether a key is saved and whether the engine is downloaded.
+#[derive(serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ApiStatus {
+    provider: Option<crate::api_engine::ApiProvider>,
+    has_key: bool,
+    engine_installed: bool,
+}
+
+#[tauri::command]
+pub async fn api_status(app: AppHandle, state: State<'_, AppState>, keys: State<'_, ApiKeys>) -> CmdResult<ApiStatus> {
+    let data = app.path().app_data_dir().map_err(err)?;
+    let provider = state.db.get_settings(&state.home).api_provider;
+    let has_key = match &provider {
+        Some(provider) => keys.get(&provider.base_url).await?.is_some_and(|k| !k.is_empty()),
+        None => false,
+    };
+    Ok(ApiStatus {
+        provider,
+        has_key,
+        engine_installed: crate::api_engine::installed_engine(&data).is_some(),
+    })
+}
+
+/// Lists the models at `base_url`, which checks the key too. No `key`: the saved one.
+#[tauri::command]
+pub async fn api_check(keys: State<'_, ApiKeys>, base_url: String, key: Option<String>) -> CmdResult<crate::api_engine::ApiCheck> {
+    let base = crate::api_engine::clean_base_url(&base_url).ok_or("Use an HTTPS address, or HTTP for a provider on this computer")?;
+    let key = match key {
+        Some(k) => k,
+        None => keys.get(&base).await?.unwrap_or_default(),
+    };
+    let client = api_client(std::time::Duration::from_secs(20))?;
+    Ok(crate::api_engine::check(&client, &base, &key).await)
+}
+
+/// One real one-token call with `model`, before saving: proves the key, the balance and the model.
+/// No `key`: the saved one.
+#[tauri::command]
+pub async fn api_try(keys: State<'_, ApiKeys>, base_url: String, key: Option<String>, model: String) -> CmdResult<crate::api_engine::ApiCheck> {
+    let base = crate::api_engine::clean_base_url(&base_url).ok_or("Use an HTTPS address, or HTTP for a provider on this computer")?;
+    let key = match key {
+        Some(k) => k,
+        None => keys.get(&base).await?.unwrap_or_default(),
+    };
+    let client = api_client(std::time::Duration::from_secs(60))?;
+    Ok(crate::api_engine::try_model(&client, &base, &key, model.trim()).await)
+}
+
+/// Whether something answers at `base_url` (a local 9router).
+#[tauri::command]
+pub async fn api_reachable(base_url: String) -> CmdResult<bool> {
+    let Some(base) = crate::api_engine::clean_base_url(&base_url) else { return Ok(false) };
+    let client = api_client(std::time::Duration::from_millis(1500))?;
+    Ok(crate::api_engine::reachable(&client, &base).await)
+}
+
+/// Saves the provider (and the key, when given) and makes Your API the default agent.
+#[tauri::command]
+pub async fn api_save(
+    state: State<'_, AppState>,
+    keys: State<'_, ApiKeys>,
+    usage: State<'_, crate::usage::UsageCache>,
+    provider: crate::api_engine::ApiProvider,
+    key: Option<String>,
+) -> CmdResult<Settings> {
+    let base_url = crate::api_engine::clean_base_url(&provider.base_url).ok_or("Use an HTTPS address, or HTTP for a provider on this computer")?;
+    let model = provider.model.trim().to_string();
+    if model.is_empty() {
+        return Err("Pick a model".into());
+    }
+    if let Some(key) = key {
+        keys.set(&base_url, key.trim().to_string()).await?;
+    } else if keys.get(&base_url).await?.is_none() {
+        return Err("Enter a key for this provider address".into());
+    }
+    let mut models: Vec<String> = provider.models.iter().map(|m| m.trim().to_string()).filter(|m| !m.is_empty()).collect();
+    models.sort();
+    models.dedup();
+    let provider = crate::api_engine::ApiProvider { provider: provider.provider, base_url, model, models };
+    *usage.0.lock().map_err(err)? = None;
+    // The model picked here is the one to use: forget a pick from the chat's model menu.
+    let mut agent_models = state.db.get_settings(&state.home).agent_models;
+    agent_models.remove("custom");
+    state
+        .db
+        .update_settings(serde_json::json!({ "apiProvider": provider, "defaultAgent": "custom", "agentModels": agent_models }))
+        .map_err(err)
+}
+
+/// Forgets the provider and its key. The default agent goes back to Claude Code when it was Your API.
+#[tauri::command]
+pub async fn api_clear(state: State<'_, AppState>, keys: State<'_, ApiKeys>) -> CmdResult<Settings> {
+    keys.delete().await?;
+    let mut patch = serde_json::json!({ "apiProvider": null });
+    if state.db.get_settings(&state.home).default_agent == AgentId::Custom {
+        patch["defaultAgent"] = serde_json::json!("claude");
+    }
+    state.db.update_settings(patch).map_err(err)
+}
+
+/// Downloads the engine unless it is there, sending `engine://progress` while it does.
+#[tauri::command]
+pub async fn engine_install(app: AppHandle, lock: State<'_, EngineInstall>) -> CmdResult<()> {
+    let _one = lock.0.lock().await;
+    let data = app.path().app_data_dir().map_err(err)?;
+    // Bound stalled downloads while the setup dialog is busy.
+    let client = reqwest::Client::builder()
+        .connect_timeout(std::time::Duration::from_secs(20))
+        .read_timeout(std::time::Duration::from_secs(30))
+        .user_agent(concat!("tayang-studio/", env!("CARGO_PKG_VERSION")))
+        .build()
+        .map_err(err)?;
+    let emitter = app.clone();
+    let mut last = std::time::Instant::now() - std::time::Duration::from_secs(1);
+    let progress = std::sync::Mutex::new(move |done: u64, total: Option<u64>| {
+        let end = total.is_some_and(|t| done >= t);
+        if end || last.elapsed() >= std::time::Duration::from_millis(150) {
+            last = std::time::Instant::now();
+            let _ = emitter.emit(ENGINE_PROGRESS_EVENT, serde_json::json!({ "done": done, "total": total }));
+        }
+    });
+    crate::api_engine::install_engine(&client, &data, |d, t| {
+        if let Ok(mut f) = progress.lock() {
+            f(d, t)
+        }
+    })
+    .await?;
+    Ok(())
+}
+
+/// The command and environment that start Your API: the engine with the saved provider and key.
+async fn api_agent(app: &AppHandle) -> CmdResult<(Vec<String>, Vec<(String, String)>)> {
+    let data = app.path().app_data_dir().map_err(err)?;
+    let engine = crate::api_engine::installed_engine(&data).ok_or("Your API isn't set up yet. Open Settings › Agents › Your API")?;
+    let state = app.state::<AppState>();
+    let provider = state.db.get_settings(&state.home).api_provider.ok_or("Your API isn't set up yet. Open Settings › Agents › Your API")?;
+    let key = app.state::<ApiKeys>().get(&provider.base_url).await?.ok_or("Your API key is missing. Open Settings › Agents › Your API")?;
+    // The provider's list today (models come and go); the saved one when it can't be read.
+    let mut provider = provider;
+    let fresh = crate::api_engine::check(&api_client(std::time::Duration::from_secs(8))?, &provider.base_url, &key).await;
+    if fresh.ok {
+        provider.models = fresh.models;
+    }
+    let config_dir = crate::api_engine::engine_config_dir(&data);
+    std::fs::create_dir_all(&config_dir).map_err(err)?;
+    let data_dir = crate::api_engine::engine_data_dir(&data);
+    std::fs::create_dir_all(&data_dir).map_err(err)?;
+    let config_file = crate::api_engine::write_config(&crate::api_engine::engine_root(&data), &provider, !key.is_empty()).map_err(err)?;
+    let command = vec![engine.to_string_lossy().into_owned(), "acp".into()];
+    Ok((command, crate::api_engine::session_env(&config_file, &key, &config_dir, &data_dir)))
+}
+
+/// The command that starts `agent_id` on this computer, plus any environment of its own.
+async fn agent_launch(app: &AppHandle, agent_id: AgentId) -> CmdResult<(Vec<String>, Vec<(String, String)>)> {
+    if agent_id == AgentId::Custom {
+        return api_agent(app).await;
+    }
+    let mut command = system::acp_command(agent_id).ok_or("Pick an agent first")?;
+    let program = command[0].clone();
+    let found = system::agent_program(&RealExec, agent_id).ok_or_else(|| format!("Can't find {program} on this computer"))?;
+    command[0] = found.to_string_lossy().into_owned();
+    Ok((command, Vec::new()))
+}
+
+/// Your API as a row of the agent list: ready once the engine, the provider and the key are there.
+async fn api_agent_info(app: &AppHandle) -> AgentInfo {
+    let data = app.path().app_data_dir().ok();
+    let engine = data.as_deref().and_then(crate::api_engine::installed_engine).is_some();
+    let provider = app.try_state::<AppState>().and_then(|s| s.db.get_settings(&s.home).api_provider);
+    let key = match (app.try_state::<ApiKeys>(), &provider) {
+        (Some(keys), Some(provider)) => keys.get(&provider.base_url).await.ok().flatten().is_some(),
+        _ => false,
+    };
+    AgentInfo {
+        id: AgentId::Custom,
+        name: "Your API".into(),
+        installed: engine && provider.is_some() && key,
+        version: provider.map(|p| p.model),
+        acp_command: Vec::new(),
+        recommended: false,
+    }
 }
 
 #[cfg(test)]
@@ -2272,6 +2861,23 @@ mod tests {
             assert!(o.meta.is_none());
             assert_eq!(o.env, vec![("TAYANG_STUDIO".to_string(), "1".to_string())]);
         }
+    }
+
+    #[test]
+    fn the_users_skills_load_as_a_second_plugin() {
+        let mut o = session_options(AgentId::Claude, Some(Path::new("/res/agent-plugin")), true);
+        add_plugin(&mut o, Path::new("/data/user-skills"));
+        let plugins = &o.meta.unwrap()["claudeCode"]["options"]["plugins"];
+        assert_eq!(plugins[1]["path"], "/data/user-skills");
+        assert_eq!(plugins[1]["type"], "local");
+
+        let mut alone = session_options(AgentId::Claude, None, true);
+        add_plugin(&mut alone, Path::new("/data/user-skills"));
+        assert_eq!(alone.meta.unwrap()["claudeCode"]["options"]["plugins"][0]["path"], "/data/user-skills");
+
+        let mut internal = session_options(AgentId::Claude, None, false);
+        add_plugin(&mut internal, Path::new("/data/user-skills"));
+        assert!(internal.meta.is_none());
     }
 
     #[test]

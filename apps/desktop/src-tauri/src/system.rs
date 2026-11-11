@@ -6,6 +6,9 @@ use std::path::{Path, PathBuf};
 pub trait Exec {
     fn run(&self, program: &str, args: &[&str]) -> Option<String>;
     fn which(&self, program: &str) -> Option<PathBuf>;
+    fn opencode_desktop_dirs(&self) -> Vec<PathBuf> {
+        Vec::new()
+    }
 }
 
 use std::io::Read;
@@ -19,9 +22,9 @@ fn semver_key(name: &str) -> (u64, u64, u64) {
     (it.next().unwrap_or(0), it.next().unwrap_or(0), it.next().unwrap_or(0))
 }
 
-/// Highest-version `~/.nvm/versions/node/*/bin` that exists.
-fn newest_nvm_bin(home: &Path) -> Option<PathBuf> {
-    std::fs::read_dir(home.join(".nvm").join("versions").join("node"))
+/// Highest-version `<root>/<version>/bin` that exists, e.g. in `~/.nvm/versions/node`.
+fn newest_version_bin(root: &Path) -> Option<PathBuf> {
+    std::fs::read_dir(root)
         .ok()?
         .filter_map(|e| e.ok())
         .filter(|e| e.path().join("bin").is_dir())
@@ -50,7 +53,16 @@ pub fn tool_dirs(home: Option<&Path>, appdata: Option<&Path>) -> Vec<PathBuf> {
                     dirs.push(bin);
                 }
             }
-            dirs.extend(newest_nvm_bin(h));
+            let share = h.join(".local").join("share");
+            // nvm, then nvm.fish (~/.local/share/nvm/v22.x/bin), the usual pick on fish.
+            dirs.extend(newest_version_bin(&h.join(".nvm").join("versions").join("node")));
+            dirs.extend(newest_version_bin(&share.join("nvm")));
+            // Version managers that run node through shims.
+            for shims in [share.join("mise").join("shims"), h.join(".asdf").join("shims"), h.join(".nodenv").join("shims")] {
+                if shims.is_dir() {
+                    dirs.push(shims);
+                }
+            }
             dirs.push(h.join(".claude").join("local"));
             dirs.push(h.join(".opencode").join("bin"));
         }
@@ -63,6 +75,8 @@ pub fn tool_dirs(home: Option<&Path>, appdata: Option<&Path>) -> Vec<PathBuf> {
         // winget puts portable tools (ffmpeg, yt-dlp) behind links here.
         if let Some(h) = home {
             dirs.push(h.join("AppData").join("Local").join("Microsoft").join("WinGet").join("Links"));
+            // Antigravity CLI's installer puts `agy` here.
+            dirs.push(h.join("AppData").join("Local").join("agy").join("bin"));
         }
         // A winget install updates the stored PATH, not the one this app started with.
         dirs.extend(registry_path());
@@ -133,16 +147,90 @@ fn dedupe(dirs: &mut Vec<PathBuf>) {
     dirs.retain(|d| !d.as_os_str().is_empty() && seen.insert(d.clone()));
 }
 
-/// Pure core of `augmented_path`: node's directory first, then the usual install spots,
-/// then the existing PATH. Duplicates and empty entries are dropped, order is kept.
+#[cfg(unix)]
+const SHELL_MARK: &str = "__TAYANG_PATH__";
+
+/// The PATH a login shell printed between two `SHELL_MARK` lines. Interactive shells may print
+/// a greeting or warnings around it, so only what sits between the marks counts.
+#[cfg(unix)]
+fn parse_shell_path(out: &str) -> Vec<PathBuf> {
+    let mut parts = out.split(SHELL_MARK);
+    let (Some(_), Some(path), Some(_)) = (parts.next(), parts.next(), parts.next()) else {
+        return Vec::new();
+    };
+    std::env::split_paths(path.trim()).filter(|p| p.is_absolute()).collect()
+}
+
+/// Asks the user's login shell for its PATH, the one their terminal has. A GUI launch gets a
+/// minimal PATH, so without this a node set up in .bashrc, .zshrc or config.fish (nvm, mise,
+/// asdf, a custom prefix) is invisible to the app while `node --version` works in the terminal.
+#[cfg(unix)]
+fn read_shell_path() -> Vec<PathBuf> {
+    use std::process::{Command, Stdio};
+    let shell = std::env::var("SHELL").ok().filter(|s| !s.is_empty()).unwrap_or_else(|| "/bin/sh".into());
+    // `echo` and `printenv` read the same in bash, zsh and fish; `-i` loads .bashrc/.zshrc where nvm lives.
+    let script = format!("echo {SHELL_MARK}; printenv PATH; echo {SHELL_MARK}");
+    let Ok(mut child) = Command::new(&shell)
+        .args(["-l", "-i", "-c", &script])
+        .stdin(Stdio::null())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::null())
+        .spawn()
+    else {
+        return Vec::new();
+    };
+    let Some(mut out) = child.stdout.take() else { return Vec::new() };
+    // A shell rc that starts something long-lived keeps the pipe open, so read on a thread and
+    // give up after the timeout instead of joining it.
+    let (tx, rx) = std::sync::mpsc::channel();
+    std::thread::spawn(move || {
+        let mut s = String::new();
+        let _ = out.read_to_string(&mut s);
+        let _ = tx.send(s);
+    });
+    let got = rx.recv_timeout(EXEC_TIMEOUT).ok();
+    let _ = child.kill();
+    let _ = child.wait();
+    got.map(|s| parse_shell_path(&s)).unwrap_or_default()
+}
+
+#[cfg(not(unix))]
+fn read_shell_path() -> Vec<PathBuf> {
+    Vec::new()
+}
+
+static SHELL_PATH: std::sync::RwLock<Option<Vec<PathBuf>>> = std::sync::RwLock::new(None);
+
+/// The login shell's PATH, read once and kept. `refresh_shell_path` reads it again.
+pub fn shell_path() -> Vec<PathBuf> {
+    if let Some(p) = SHELL_PATH.read().ok().and_then(|g| g.clone()) {
+        return p;
+    }
+    refresh_shell_path()
+}
+
+/// Reads the login shell's PATH again: after the user installs node in their terminal, the
+/// next "Check again" sees it without restarting the app.
+pub fn refresh_shell_path() -> Vec<PathBuf> {
+    let p = read_shell_path();
+    if let Ok(mut g) = SHELL_PATH.write() {
+        *g = Some(p.clone());
+    }
+    p
+}
+
+/// Pure core of `augmented_path`: node's directory first, then the login shell's PATH, then the
+/// usual install spots, then the existing PATH. Duplicates and empty entries are dropped, order is kept.
 pub fn build_path(
     home: Option<&Path>,
     existing: Option<&std::ffi::OsStr>,
     node_dir: Option<&Path>,
     appdata: Option<&Path>,
+    shell: &[PathBuf],
 ) -> std::ffi::OsString {
     let mut dirs: Vec<PathBuf> = Vec::new();
     dirs.extend(node_dir.map(Path::to_path_buf));
+    dirs.extend(shell.iter().cloned());
     dirs.extend(tool_dirs(home, appdata));
     if let Some(p) = existing {
         dirs.extend(std::env::split_paths(p));
@@ -151,13 +239,16 @@ pub fn build_path(
     std::env::join_paths(dirs).unwrap_or_else(|_| existing.map(Into::into).unwrap_or_default())
 }
 
-/// Pure core of `RealExec::which`'s search list: the existing PATH first, then `tool_dirs`.
+/// Pure core of `RealExec::which`'s search list: the login shell's PATH first, so the app finds the
+/// same node the user's terminal runs (not an older /usr/bin/node), then the existing PATH, then `tool_dirs`.
 pub fn search_dirs(
     home: Option<&Path>,
     existing: Option<&std::ffi::OsStr>,
     appdata: Option<&Path>,
+    shell: &[PathBuf],
 ) -> Vec<PathBuf> {
-    let mut dirs: Vec<PathBuf> = existing.map(|p| std::env::split_paths(p).collect()).unwrap_or_default();
+    let mut dirs: Vec<PathBuf> = shell.to_vec();
+    dirs.extend(existing.map(|p| std::env::split_paths(p).collect::<Vec<_>>()).unwrap_or_default());
     dirs.extend(tool_dirs(home, appdata));
     dedupe(&mut dirs);
     dirs
@@ -178,6 +269,7 @@ pub fn augmented_path() -> std::ffi::OsString {
         std::env::var_os("PATH").as_deref(),
         node_dir.as_deref(),
         appdata.as_deref(),
+        &shell_path(),
     )
 }
 
@@ -187,7 +279,7 @@ pub struct RealExec;
 impl RealExec {
     fn search_dirs() -> Vec<PathBuf> {
         let appdata = std::env::var_os("APPDATA").map(PathBuf::from);
-        search_dirs(home_dir().as_deref(), std::env::var_os("PATH").as_deref(), appdata.as_deref())
+        search_dirs(home_dir().as_deref(), std::env::var_os("PATH").as_deref(), appdata.as_deref(), &shell_path())
     }
 }
 
@@ -242,6 +334,12 @@ impl Exec for RealExec {
         let pathext = std::env::var("PATHEXT").ok();
         let exts = candidate_exts(program, pathext.as_deref(), cfg!(windows));
         find_in(&Self::search_dirs(), program, &exts)
+    }
+
+    fn opencode_desktop_dirs(&self) -> Vec<PathBuf> {
+        let local_appdata = std::env::var_os("LOCALAPPDATA").map(PathBuf::from);
+        let program_files = std::env::var_os("ProgramFiles").map(PathBuf::from);
+        opencode_desktop_dirs(home_dir().as_deref(), local_appdata.as_deref(), program_files.as_deref())
     }
 }
 
@@ -361,7 +459,7 @@ pub fn system_info(exec: &dyn Exec) -> SystemInfo {
 
 type AgentDef = (AgentId, &'static str, &'static str, &'static [&'static str]);
 
-const AGENT_DEFS: [AgentDef; 4] = [
+const AGENT_DEFS: [AgentDef; 5] = [
     (
         AgentId::Claude,
         "Claude Code",
@@ -371,6 +469,8 @@ const AGENT_DEFS: [AgentDef; 4] = [
     (AgentId::Opencode, "OpenCode", "opencode", &["opencode", "acp"]),
     (AgentId::Gemini, "Gemini CLI", "gemini", &["gemini", "--experimental-acp"]),
     (AgentId::Codex, "Codex", "codex", &["npx", "-y", "@zed-industries/codex-acp"]),
+    // Antigravity CLI speaks ACP itself since 1.5.0; its installer puts `agy` in ~/.local/bin.
+    (AgentId::Antigravity, "Antigravity CLI", "agy", &["agy", "acp"]),
 ];
 
 /// The command that starts this agent in ACP mode; `None` for `custom`.
@@ -441,8 +541,7 @@ pub fn agent_program(exec: &dyn Exec, id: AgentId) -> Option<PathBuf> {
     if id != AgentId::Opencode {
         return found;
     }
-    let env = |k: &str| std::env::var_os(k).map(PathBuf::from);
-    opencode_program(found, &opencode_desktop_dirs(home_dir().as_deref(), env("LOCALAPPDATA").as_deref(), env("ProgramFiles").as_deref()))
+    opencode_program(found, &exec.opencode_desktop_dirs())
 }
 
 pub fn detect_agents(exec: &dyn Exec) -> Vec<AgentInfo> {
@@ -470,18 +569,6 @@ pub fn detect_agents(exec: &dyn Exec) -> Vec<AgentInfo> {
         .collect()
 }
 
-/// True when `~/.claude.json` has an ElevenLabs server at user scope (top-level
-/// `mcpServers`). Local-scope entries under `projects` only work in that one folder, so
-/// they don't count.
-pub fn elevenlabs_in_claude_config(json: &str) -> bool {
-    let Ok(v) = serde_json::from_str::<serde_json::Value>(json) else {
-        return false;
-    };
-    v.get("mcpServers")
-        .and_then(|s| s.as_object())
-        .is_some_and(|m| m.keys().any(|k| k.to_ascii_lowercase().contains("elevenlabs")))
-}
-
 fn chrome_found(exec: &dyn Exec, os: OsKind) -> bool {
     match os {
         OsKind::Macos => Path::new("/Applications/Google Chrome.app").exists(),
@@ -498,8 +585,7 @@ fn chrome_found(exec: &dyn Exec, os: OsKind) -> bool {
     }
 }
 
-/// `claude_config` is the Claude Code config folder Tayang runs Claude with.
-pub fn check_tools(exec: &dyn Exec, agent: AgentId, claude_config: &Path) -> Vec<ToolStatus> {
+pub fn check_tools(exec: &dyn Exec) -> Vec<ToolStatus> {
     let version_of = |bin: &str, arg: &str| -> Option<String> {
         exec.which(bin)?;
         exec.run(bin, &[arg]).and_then(|s| parse_version(&s))
@@ -554,25 +640,7 @@ pub fn check_tools(exec: &dyn Exec, agent: AgentId, claude_config: &Path) -> Vec
         detail: "Lets you copy the style of a video from a link".into(),
     };
 
-    let (el_found, el_detail) = if agent == AgentId::Claude {
-        let found = std::fs::read_to_string(claude_config.join(".claude.json"))
-            .map(|s| elevenlabs_in_claude_config(&s))
-            .unwrap_or(false);
-        (found, "Adds a natural voice to your videos")
-    } else {
-        (false, "Check your agent's MCP settings")
-    };
-    let elevenlabs = ToolStatus {
-        id: ToolId::ElevenlabsMcp,
-        name: "ElevenLabs voice".into(),
-        required: false,
-        found: el_found,
-        version: None,
-        ok: el_found,
-        detail: el_detail.into(),
-    };
-
-    vec![node, ffmpeg, chrome, ytdlp, elevenlabs]
+    vec![node, ffmpeg, chrome, ytdlp]
 }
 
 #[cfg(test)]
@@ -586,7 +654,7 @@ mod path_tests {
         let h = home.path();
         std::fs::create_dir_all(h.join(".nvm/versions/node/v20.1.0/bin")).unwrap();
         let existing = std::env::join_paths(["/usr/bin", "/usr/local/bin", "/bin", "/usr/bin", "/x"]).unwrap();
-        let out = build_path(Some(h), Some(&existing), Some(Path::new("/n/bin")), None);
+        let out = build_path(Some(h), Some(&existing), Some(Path::new("/n/bin")), None, &[]);
         let got: Vec<PathBuf> = std::env::split_paths(&out).collect();
         let want: Vec<PathBuf> = [
             "/n/bin".into(),
@@ -625,14 +693,14 @@ mod path_tests {
         std::fs::write(h.join(".volta/bin/tayang-test-tool"), "").unwrap();
 
         let existing = std::env::join_paths(["/usr/bin"]).unwrap();
-        let dirs = search_dirs(Some(h), Some(&existing), None);
+        let dirs = search_dirs(Some(h), Some(&existing), None, &[]);
         assert_eq!(dirs[0], PathBuf::from("/usr/bin"));
         assert!(dirs.contains(&h.join(".nvm/versions/node/v22.11.0/bin")));
         assert!(!dirs.contains(&h.join(".nvm/versions/node/v9.0.0/bin")));
         assert!(dirs.contains(&h.join(".fnm/aliases/default/bin")));
         assert!(dirs.contains(&h.join(".volta/bin")));
         // Same list as the PATH given to spawned processes.
-        let path: Vec<PathBuf> = std::env::split_paths(&build_path(Some(h), Some(&existing), None, None)).collect();
+        let path: Vec<PathBuf> = std::env::split_paths(&build_path(Some(h), Some(&existing), None, None, &[])).collect();
         for d in &dirs {
             assert!(path.contains(d), "{d:?} missing from PATH");
         }
@@ -690,10 +758,51 @@ mod path_tests {
         assert_eq!(semver_key("junk"), (0, 0, 0));
     }
 
+    /// fish users usually have nvm.fish (~/.local/share/nvm), others mise or asdf shims.
+    #[cfg(unix)]
+    #[test]
+    fn search_dirs_cover_fish_nvm_and_shims() {
+        let home = tempfile::tempdir().unwrap();
+        let h = home.path();
+        for v in ["v20.6.1", "v22.12.0"] {
+            std::fs::create_dir_all(h.join(".local/share/nvm").join(v).join("bin")).unwrap();
+        }
+        std::fs::create_dir_all(h.join(".local/share/mise/shims")).unwrap();
+        std::fs::create_dir_all(h.join(".asdf/shims")).unwrap();
+        let dirs = search_dirs(Some(h), None, None, &[]);
+        assert!(dirs.contains(&h.join(".local/share/nvm/v22.12.0/bin")));
+        assert!(!dirs.contains(&h.join(".local/share/nvm/v20.6.1/bin")));
+        assert!(dirs.contains(&h.join(".local/share/mise/shims")));
+        assert!(dirs.contains(&h.join(".asdf/shims")));
+        assert!(!dirs.contains(&h.join(".nodenv/shims")));
+    }
+
+    /// The terminal's PATH wins over the GUI's: a newer node there beats an old /usr/bin/node.
+    #[cfg(unix)]
+    #[test]
+    fn shell_path_comes_first() {
+        let shell = vec![PathBuf::from("/home/a/.local/share/nvm/v22.12.0/bin"), PathBuf::from("/usr/bin")];
+        let existing = std::env::join_paths(["/usr/bin", "/bin"]).unwrap();
+        let dirs = search_dirs(None, Some(&existing), None, &shell);
+        assert_eq!(&dirs[..3], [shell[0].clone(), "/usr/bin".into(), "/bin".into()]);
+        let path: Vec<PathBuf> =
+            std::env::split_paths(&build_path(None, Some(&existing), Some(Path::new("/n/bin")), None, &shell)).collect();
+        assert_eq!(&path[..2], ["/n/bin".into(), shell[0].clone()]);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn parse_shell_path_reads_between_marks() {
+        let out = "Welcome to fish\n__TAYANG_PATH__\n/home/a/.local/share/nvm/v22.12.0/bin:/usr/bin:relative\n__TAYANG_PATH__\nbye";
+        assert_eq!(parse_shell_path(out), [PathBuf::from("/home/a/.local/share/nvm/v22.12.0/bin"), PathBuf::from("/usr/bin")]);
+        assert!(parse_shell_path("no marks here").is_empty());
+        assert!(parse_shell_path("__TAYANG_PATH__\n/usr/bin").is_empty());
+    }
+
     #[test]
     fn build_path_without_inputs_keeps_existing() {
         let existing = std::env::join_paths(["/a", "/b"]).unwrap();
-        let out = build_path(None, Some(&existing), None, None);
+        let out = build_path(None, Some(&existing), None, None, &[]);
         let got: Vec<PathBuf> = std::env::split_paths(&out).collect();
         assert!(got.ends_with(&[PathBuf::from("/a"), PathBuf::from("/b")]));
     }
@@ -707,6 +816,7 @@ mod tests {
     #[derive(Default)]
     struct FakeExec {
         out: HashMap<String, String>,
+        desktop_dirs: Vec<PathBuf>,
     }
     impl FakeExec {
         fn with(mut self, prog: &str, out: &str) -> Self {
@@ -721,6 +831,9 @@ mod tests {
         }
         fn which(&self, program: &str) -> Option<PathBuf> {
             self.out.get(program).map(|_| PathBuf::from(format!("/bin/{program}")))
+        }
+        fn opencode_desktop_dirs(&self) -> Vec<PathBuf> {
+            self.desktop_dirs.clone()
         }
     }
 
@@ -744,7 +857,7 @@ mod tests {
     #[test]
     fn old_node_is_not_ok() {
         let ex = FakeExec::default().with("node", "v20.11.0");
-        let t = check_tools(&ex, AgentId::Claude, Path::new("/nonexistent"));
+        let t = check_tools(&ex);
         let n = tool(&t, ToolId::Node);
         assert!(n.found && !n.ok && n.required);
         assert_eq!(n.version.as_deref(), Some("20.11.0"));
@@ -754,40 +867,18 @@ mod tests {
     #[test]
     fn new_node_is_ok() {
         let ex = FakeExec::default().with("node", "v22.1.0");
-        let t = check_tools(&ex, AgentId::Claude, Path::new("/nonexistent"));
+        let t = check_tools(&ex);
         assert!(tool(&t, ToolId::Node).ok);
     }
 
     #[test]
     fn missing_ffmpeg_is_not_found() {
         let ex = FakeExec::default();
-        let t = check_tools(&ex, AgentId::Claude, Path::new("/nonexistent"));
-        assert_eq!(t.len(), 5);
+        let t = check_tools(&ex);
+        assert_eq!(t.len(), 4);
         let f = tool(&t, ToolId::Ffmpeg);
         assert!(!f.found && !f.ok && f.required && f.version.is_none());
         assert!(!tool(&t, ToolId::Ytdlp).required);
-    }
-
-    #[test]
-    fn elevenlabs_config_detection() {
-        assert!(elevenlabs_in_claude_config(r#"{"mcpServers":{"elevenlabs":{}}}"#));
-        assert!(elevenlabs_in_claude_config(r#"{"mcpServers":{"my-ElevenLabs-tts":{}}}"#));
-        // Local scope (one folder only) doesn't count.
-        assert!(!elevenlabs_in_claude_config(
-            r#"{"projects":{"/a":{"mcpServers":{"elevenlabs":{}}}}}"#
-        ));
-        assert!(!elevenlabs_in_claude_config("{}"));
-        assert!(!elevenlabs_in_claude_config(r#"{"mcpServers":{"other":{}}}"#));
-        assert!(!elevenlabs_in_claude_config("not json"));
-    }
-
-    #[test]
-    fn non_claude_agent_elevenlabs_hint() {
-        let ex = FakeExec::default();
-        let t = check_tools(&ex, AgentId::Gemini, Path::new("/nonexistent"));
-        let e = tool(&t, ToolId::ElevenlabsMcp);
-        assert!(!e.found);
-        assert_eq!(e.detail, "Check your agent's MCP settings");
     }
 
     #[test]
@@ -815,6 +906,12 @@ mod tests {
         let missing = tmp.path().join("nothing");
         assert_eq!(opencode_program(None, &[missing.clone(), tauri.clone()]), Some(tauri.join(cli)));
         assert_eq!(opencode_program(None, &[missing]), None);
+
+        let mut ex = FakeExec::default().with(cli, "1.2.3");
+        ex.desktop_dirs = vec![tauri];
+        let detected = detect_agents(&ex).into_iter().find(|a| a.id == AgentId::Opencode).unwrap();
+        assert!(detected.installed);
+        assert_eq!(detected.version.as_deref(), Some("1.2.3"));
     }
 
     #[test]
@@ -822,12 +919,24 @@ mod tests {
         let ex = FakeExec::default().with("claude", "2.1.3 (Claude Code)");
         let a = detect_agents(&ex);
         let ids: Vec<_> = a.iter().map(|x| x.id).collect();
-        assert_eq!(ids, [AgentId::Claude, AgentId::Opencode, AgentId::Gemini, AgentId::Codex]);
+        assert_eq!(ids, [AgentId::Claude, AgentId::Opencode, AgentId::Gemini, AgentId::Codex, AgentId::Antigravity]);
         assert!(a[0].installed && a[0].recommended);
         assert_eq!(a[0].version.as_deref(), Some("2.1.3"));
         assert_eq!(a[0].acp_command, ["npx", "-y", "@agentclientprotocol/claude-agent-acp"]);
         assert!(a[1..].iter().all(|x| !x.installed && x.version.is_none() && !x.recommended));
         assert_eq!(a[2].acp_command, ["gemini", "--experimental-acp"]);
+    }
+
+    #[test]
+    fn detect_antigravity_cli() {
+        let ex = FakeExec::default().with("agy", "1.5.3");
+        let a = detect_agents(&ex);
+        let agy = a.iter().find(|x| x.id == AgentId::Antigravity).unwrap();
+        assert!(agy.installed && !agy.recommended);
+        assert_eq!(agy.name, "Antigravity CLI");
+        assert_eq!(agy.version.as_deref(), Some("1.5.3"));
+        assert_eq!(agy.acp_command, ["agy", "acp"]);
+        assert_eq!(acp_command(AgentId::Antigravity).unwrap(), ["agy", "acp"]);
     }
 
     #[test]

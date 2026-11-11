@@ -1,6 +1,6 @@
 # Tayang Studio
 
-Tayang Studio is a free, open-source desktop app that helps Indonesian creators make motion videos without writing prompts. It picks topics, writes scripts and handles the prompting, while the user's own AI agent (Claude Code, opencode, Gemini CLI, Codex or any ACP agent) does the building.
+Tayang Studio is a free, open-source desktop app that helps Indonesian creators make motion videos without writing prompts. It picks topics, writes scripts and handles the prompting, while the user's own AI agent (Claude Code, opencode, Gemini CLI, Codex, Antigravity CLI or any ACP agent) does the building.
 
 ## Install
 
@@ -19,7 +19,7 @@ irm https://studio.tayang.app/install.ps1 | iex
 Both install the latest release and open it. Installed copies update themselves.
 
 - **macOS:** the app goes into /Applications (or ~/Applications if /Applications isn't writable).
-- **Linux (x86_64):** the `.deb` with apt, the `.rpm` with dnf, yum or zypper, or the AppImage in ~/.local/share/tayang-studio when there is no sudo. The AppImage needs FUSE 2.
+- **Linux (x86_64 and ARM64):** the `.deb` with apt, the `.rpm` with dnf, yum or zypper, or the AppImage in ~/.local/share/tayang-studio when there is no sudo. The AppImage needs FUSE 2.
 - **Windows:** installs for your user only, so no admin is needed.
 
 Options: `TAYANG_VERSION=0.0.2` installs that version. `TAYANG_INSTALL_DIR` sets the macOS folder. `TAYANG_LINUX_PACKAGE=deb|rpm|appimage` picks the Linux package. `TAYANG_NO_LAUNCH=1` skips opening the app. Or download an installer from [Releases](https://github.com/Maru-Yasa/tayang-studio/releases).
@@ -64,7 +64,7 @@ tayang-desktop/
 - Installs go through the agent too. Tayang shows you every command your agent asks to run, and nothing it asks about runs until you allow it, unless you turn on Auto mode for chats, you are copying a style from a video (a style study always runs in auto mode), or an autopilot is making a video (autopilots always run in auto mode). Installs always ask. An agent whose own settings already allow a command won't ask, so check your agent's permission settings (see `docs/development.md`).
 - You pick a working folder. Projects live there and keep their folder if you change it later. Agent sessions work in the working folder or in a project's own folder.
 - App data is stored in a local SQLite database, so the desktop app keeps its data on this computer and doesn't need the API (your agent still needs its own internet connection).
-- The Tayang API (studio.tayang.app/api, closed source) is optional and only adds the online features: sign-in, paid plans, built-in styles and install stats.
+- The Tayang API (studio.tayang.app/api, closed source) is optional and only adds the online features: sign-in, paid plans, additional styles and install stats.
 
 ## Privacy
 
@@ -85,5 +85,15 @@ The Style screen loads YouTube thumbnails from i.ytimg.com for styles copied fro
 Set `TAYANG_API_URL` when starting the desktop app to point it at another API (a base with the path, e.g. `http://localhost:8787/api`); it is used as given instead of the saved API URL and never stored.
 
 ## Credits
+
+The optional sound-effect search in Settings → Video defaults is an independent integration using Openverse. Agents send short search terms for CC0 Freesound recordings by default, verify the license at the original source, and record credits in `audio/sfx/CREDITS.md`. CC BY recordings are available when the user explicitly requests credits in the video or publication caption. [Openverse API](https://api.openverse.org/v1/)
+
+Search works anonymously by default. To use authenticated rate limits, register an application with Openverse and verify the registration email. Enter its Client ID and Client Secret in **Settings → Video defaults → Openverse credentials**, then select **Save Openverse credentials**. Tayang verifies the pair with Openverse before saving it in the system keychain. Select **Remove Openverse credentials** to return to anonymous search. [Openverse registration and authentication](https://api.openverse.org/v1/#section/Register-and-Authenticate)
+
+In a video chat, ask for natural foley or sound effects synced to the picture. Tayang's agent skill uses [Clipwing Real SFX](https://clipwing.pro/skills/real-sfx) to mix selected recordings and [Earshot](https://github.com/Leonxlnx/earshot) to compare candidates and review the mix locally. The tools work with both HyperFrames and Remotion. The agent asks before installing missing tools. Real SFX needs Python, FFmpeg and FFprobe. Earshot setup uses uv and CPU PyTorch. Basic measurements work without models or an API key, and the optional models for matching and reviewing audio take about 1.1 GB. The finished MP4 goes in `renders/`, with the cue report, separate effects track and recording credits under `audio/sfx/`. See the [Tayang agent workflow](packages/skills/agent-plugin/skills/tayang-studio/SKILL.md#real-sfx-mixing-and-earshot-review).
+
+In **Settings → Video defaults → Voiceover**, choose **ElevenLabs** for Tayang credits or **Gemini TTS** for your own Google quota. Paste a [Gemini API key from Google AI Studio](https://aistudio.google.com/apikey) and save it. Tayang checks access and stores the key in the system keychain. The agent uses the same local `/voice` route and receives an MP3. One speaker uses Gemini 3.8 Live, as in QuickSpeak. Two speakers use Gemini 3.8 Flash TTS via Interactions, as in Native Speech Generation. Google receives the narration or dialogue. [Google Live API](https://ai.google.dev/api/live) · [Google speech generation](https://ai.google.dev/gemini-api/docs/speech-generation)
+
+Tayang bundles 66 visual styles adapted from [Lemo-Opuscar by LemoLab](https://github.com/lemomo-ai/lemo-opuscar/tree/143f387ad774525dc9abc0ff05fb5f4bfbaa5f02) under the [MIT license](apps/desktop/src-tauri/styles/lemo-opuscar/LICENSE). They are available offline under Style → Built in and use Tayang's normal video workflow.
 
 UI polished with unslop by Damir Sokolovsky (@heydamir), CC BY 4.0.

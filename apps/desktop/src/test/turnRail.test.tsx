@@ -82,6 +82,7 @@ describe('TurnRail', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Jump to: Second prompt' }));
     const box = screen.getByTestId('box');
     expect(box.scrollTo).toHaveBeenCalledWith({ top: 600 - 16, behavior: 'smooth' });
+    expect(screen.getByText('Second prompt').closest('article')).toHaveFocus();
   });
 
   it('marks the active turn and moves it when the scroll position changes', async () => {

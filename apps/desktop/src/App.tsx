@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useRef, useState, type RefObject } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Button } from '@/components/Button';
 import { ResizeHandle } from '@/components/ResizeHandle';
@@ -25,6 +25,7 @@ import { Calendar } from '@/screens/Calendar';
 import { ChatRoute, useSoloChat } from '@/screens/ChatRoute';
 import { Plans } from '@/screens/Plans';
 import { Settings } from '@/screens/Settings';
+import { Skills } from '@/screens/Skills';
 import { Style } from '@/screens/Style';
 import { Videos } from '@/screens/Videos';
 import { Social } from '@/screens/Social';
@@ -47,6 +48,7 @@ const SIDEBAR_KEY: Partial<Record<Route['name'], SidebarKey>> = {
   autopilot: 'autopilot',
   'autopilot-wizard': 'autopilot',
   agents: 'agents',
+  skills: 'skills',
   calendar: 'calendar',
   settings: 'settings',
 };
@@ -65,6 +67,19 @@ export default function App() {
   useWindowDrag();
 
   const [loadError, setLoadError] = useState(false);
+  const main = useRef<HTMLElement>(null);
+  const previousRoute = useRef<Route | null>(null);
+  const loaded = settings !== null;
+
+  useLayoutEffect(() => {
+    if (!loaded) return;
+    const previous = previousRoute.current;
+    previousRoute.current = route;
+    const active = document.activeElement;
+    if (previous && previous !== route && !main.current?.contains(active) && !active?.closest('[role="dialog"][aria-modal="true"]')) {
+      main.current?.focus();
+    }
+  }, [loaded, route]);
 
   // First launch decides where to start: onboarded users go straight to a new chat.
   const load = useCallback(() => {
@@ -152,13 +167,11 @@ export default function App() {
   if (!settings) {
     return (
       <div data-tauri-drag-region className="flex h-full flex-col items-center justify-center gap-4 bg-background">
+        <p role="alert" className="m-0 text-sm text-text-2">{loadError ? t('app.settingsFailed') : ''}</p>
         {loadError && (
-          <>
-            <p className="m-0 text-sm text-text-2">{t('app.settingsFailed')}</p>
-            <Button variant="secondary" onClick={load}>
-              {t('common.tryAgain')}
-            </Button>
-          </>
+          <Button variant="secondary" onClick={load}>
+            {t('common.tryAgain')}
+          </Button>
         )}
       </div>
     );
@@ -166,19 +179,19 @@ export default function App() {
 
   if (route.name === 'plans') {
     return (
-      <div className="h-full overflow-y-auto bg-background">
+      <main ref={main} id="main-content" tabIndex={-1} className="h-full overflow-y-auto bg-background">
         <Plans from={route.from} plan={route.plan} />
-      </div>
+      </main>
     );
   }
   if (ONBOARDING.has(route.name)) {
     return (
-      <div className="h-full overflow-y-auto bg-background">
+      <main ref={main} id="main-content" tabIndex={-1} className="h-full overflow-y-auto bg-background">
         <Onboarding name={route.name} />
-      </div>
+      </main>
     );
   }
-  return <Shell route={route} />;
+  return <Shell route={route} main={main} />;
 }
 
 /** Below the snap point a drag collapses the sidebar to its rail; above it, it opens at that width. */
@@ -190,7 +203,7 @@ function resizeSidebar(width: number, max: number, live?: boolean) {
 }
 
 /** The app around a screen: the resizable sidebar and the main column. */
-function Shell({ route }: { route: Route }) {
+function Shell({ route, main }: { route: Route; main: RefObject<HTMLElement | null> }) {
   const { t } = useTranslation();
   // Only the project chat has the preview panel; the sidebar's room depends on it.
   const solo = useSoloChat(route.name === 'chat' ? route.chatId : null);
@@ -201,6 +214,16 @@ function Shell({ route }: { route: Route }) {
   return (
     // The window never scrolls as a page: each panel scrolls on its own.
     <div className="flex h-full flex-col overflow-hidden bg-background">
+    <a
+      href="#main-content"
+      className="sr-only focus:not-sr-only focus:absolute focus:top-2 focus:left-2 focus:z-50 focus:rounded-md focus:bg-card focus:px-4 focus:py-2 focus:text-foreground"
+      onClick={(event) => {
+        event.preventDefault();
+        main.current?.focus();
+      }}
+    >
+      {t('app.skipToContent')}
+    </a>
     <div className="flex min-h-0 flex-1 overflow-hidden">
       <div id="app-sidebar" className="relative h-full shrink-0" style={{ width: fitted.sidebar }}>
         <Sidebar active={SIDEBAR_KEY[route.name] ?? 'chat'} collapsed={fitted.collapsed} />
@@ -217,7 +240,7 @@ function Shell({ route }: { route: Route }) {
           onToggle={() => useLayout.getState().toggleCollapsed()}
         />
       </div>
-      <main className="relative min-w-0 flex-1">
+      <main ref={main} id="main-content" tabIndex={-1} className="relative min-w-0 flex-1">
         {route.name === 'chat-new' || route.name === 'chat' ? (
           <ChatRoute />
         ) : route.name === 'videos' ? (
@@ -236,6 +259,8 @@ function Shell({ route }: { route: Route }) {
           )
         ) : route.name === 'agents' ? (
           <Agents />
+        ) : route.name === 'skills' ? (
+          <Skills />
         ) : route.name === 'calendar' ? (
           <Calendar />
         ) : (

@@ -180,7 +180,7 @@ export function ChatThread({ chatId, draft, styleId: routeStyleId }: { chatId: s
   return (
     <div className="flex h-full min-w-0 flex-col">
       <header data-tauri-drag-region className="flex h-16 shrink-0 items-center gap-3 border-b border-border px-6">
-        <span className="truncate text-[15px] font-medium">{row?.title || t('chat.title')}</span>
+        <h1 className="m-0 truncate text-[15px] font-medium">{row?.title || t('chat.title')}</h1>
         <span className="shrink-0 text-xs text-text-3">
           {attached === 0 ? t('chat.noVideo') : t('chat.videosAttached', { count: attached })}
         </span>
@@ -189,18 +189,20 @@ export function ChatThread({ chatId, draft, styleId: routeStyleId }: { chatId: s
 
       <div className="flex min-h-0 flex-1 flex-col items-center px-6">
         <div className="relative flex min-h-0 w-full flex-1 justify-center">
-          <div ref={scrollRef} className="no-scrollbar flex min-h-0 w-full max-w-[720px] flex-1 flex-col gap-6 overflow-y-auto py-6">
+          <div ref={scrollRef} role="region" aria-label={t('chat.conversation')} tabIndex={0} className="no-scrollbar flex min-h-0 w-full max-w-[720px] flex-1 flex-col gap-6 overflow-y-auto py-6">
             <div className="my-auto">
               <MessageList
                 messages={messages}
                 streaming={streaming}
                 busy={busy}
+                attention={permission ? { kind: 'permissionPending', requestId: permission.requestId } : question ? { kind: 'questionPending', requestId: question.requestId } : undefined}
                 scrollRef={scrollRef}
                 onA2uiAction={onA2uiAction}
                 sendOptions={() => ({ agentId: agent })}
               >
                 {question && (
                   <QuestionCard
+                    key={question.requestId}
                     question={question}
                     agentId={agent}
                     onRespond={(r, summary) => void useChat.getState().respondQuestion(chatId, r, summary)}
@@ -232,11 +234,7 @@ export function ChatThread({ chatId, draft, styleId: routeStyleId }: { chatId: s
                     ))}
                   </div>
                 )}
-                {busy && setupLine && (
-                  <p role="status" className="m-0 text-[13px] text-text-3">
-                    {setupLine}
-                  </p>
-                )}
+                <p role="status" className="m-0 text-[13px] text-text-3 empty:absolute">{busy ? setupLine : null}</p>
               </MessageList>
             </div>
           </div>

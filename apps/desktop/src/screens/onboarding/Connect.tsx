@@ -1,23 +1,26 @@
 import { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { ArrowRight, Plus } from 'lucide-react';
+import { ArrowRight } from 'lucide-react';
 import type { AgentId, AgentInfo } from '@tayang/shared';
 import defaultOyen from '@/assets/brand/oyen-expr-default.svg';
 import { AgentLogo } from '@/components/AgentLogo';
+import { ApiSetupDialog } from '@/components/ApiSetupDialog';
 import { ClaudeAccountControl } from '@/components/ClaudeAccountControl';
 import { Button } from '@/components/Button';
 import { Oyen } from '@/components/Oyen';
 import { OnboardingHeader } from '@/components/OnboardingHeader';
+import { AGENT_INSTALL_URL } from '@/lib/agents';
 import { detectAgents, updateSettings } from '@/lib/ipc';
 import { useApp } from '@/state/app';
 import { useClaudeAccount } from '@/state/claudeAccount';
 import { track } from '@/lib/analytics';
 
-const ROWS: { id: AgentId; name?: string; installUrl?: string }[] = [
-  { id: 'claude', name: 'Claude Code', installUrl: 'https://docs.claude.com/en/docs/claude-code' },
-  { id: 'opencode', name: 'opencode', installUrl: 'https://opencode.ai' },
-  { id: 'gemini', name: 'Gemini CLI', installUrl: 'https://github.com/google-gemini/gemini-cli' },
-  { id: 'codex', name: 'Codex', installUrl: 'https://github.com/openai/codex' },
+const ROWS: { id: AgentId; name?: string }[] = [
+  { id: 'claude', name: 'Claude Code' },
+  { id: 'opencode', name: 'opencode' },
+  { id: 'gemini', name: 'Gemini CLI' },
+  { id: 'codex', name: 'Codex' },
+  { id: 'antigravity', name: 'Antigravity CLI' },
   { id: 'custom' },
 ];
 
@@ -26,13 +29,15 @@ export function Connect() {
   const { t } = useTranslation();
   const [error, setError] = useState<string | null>(null);
   const [agents, setAgents] = useState<AgentInfo[] | null>(null);
+  const [apiOpen, setApiOpen] = useState(false);
+  const [agentCheckFailed, setAgentCheckFailed] = useState(false);
   const claudeSignedIn = useClaudeAccount((s) => !!s.account?.signedIn);
 
   useEffect(() => {
     let live = true;
     detectAgents()
       .then((a) => live && setAgents(a))
-      .catch(() => live && setAgents([]));
+      .catch(() => live && setAgentCheckFailed(true));
     return () => {
       live = false;
     };
@@ -51,6 +56,7 @@ export function Connect() {
   // Claude also needs Tayang's own sign-in (its own config folder, see claude_account.rs).
   const ready = (id: AgentId) => !!info(id)?.installed && (id !== 'claude' || claudeSignedIn);
   const connectedId = ROWS.find((r) => ready(r.id) && settings?.defaultAgent === r.id)?.id;
+  const connectedName = ROWS.find((r) => r.id === connectedId)?.name;
 
   return (
     <div className="flex min-h-full flex-col items-center bg-background px-6 pt-10 pb-12 text-foreground">
@@ -63,50 +69,70 @@ export function Connect() {
           </p>
         </div>
 
+        <div role="status" className="text-[13px] text-text-2 empty:absolute">
+          {!agents && !agentCheckFailed && t('onboarding.connect.checkingAgents')}
+          {connectedId && <span className="sr-only">{`${connectedName ?? t('agents.yourApi')} · ${t('onboarding.connect.connected')}`}</span>}
+        </div>
+        <p role="alert" className="m-0 text-[13px] text-orange-light empty:absolute">
+          {error ?? (agentCheckFailed ? t('onboarding.connect.checkFailed') : null)}
+        </p>
+
         <ul className="flex flex-col overflow-hidden rounded-xl border border-border bg-card">
           {ROWS.map((r) => {
             const a = info(r.id);
-            const name = r.name ?? t('onboarding.connect.otherAgent');
+            const name = r.name ?? t('agents.yourApi');
             const installed = !!a?.installed;
             const connected = ready(r.id) && settings?.defaultAgent === r.id;
             const needsSignIn = installed && r.id === 'claude' && !claudeSignedIn;
             const status = r.id === 'custom'
-              ? t('onboarding.connect.otherHint')
+              ? installed && a?.version
+                ? t('onboarding.connect.yourApiReady', { model: a.version })
+                : t('onboarding.connect.yourApiHint')
               : installed
                 ? t(connected ? 'onboarding.connect.foundReady' : 'onboarding.connect.found')
-                : t('onboarding.connect.notInstalled');
+                : agents ? t('onboarding.connect.notInstalled') : '';
             return (
               <li key={r.id} className="flex items-center gap-4 border-b border-border p-4 last:border-b-0">
                 <div className="flex size-10 shrink-0 items-center justify-center rounded-md bg-raised text-text-2">
-                  {r.id === 'custom' ? <Plus size={18} strokeWidth={1.5} aria-hidden="true" /> : <AgentLogo id={r.id} size={22} />}
+                  <AgentLogo id={r.id} size={22} />
                 </div>
                 <div className="flex min-w-0 flex-1 flex-col gap-1">
                   <div className="flex flex-wrap items-center gap-2">
-                    <span className="text-[15px] font-medium">{name}</span>
+                    <span id={`connect-${r.id}-name`} className="text-[15px] font-medium">{name}</span>
                     {a?.recommended && <span className="text-xs text-orange-light">{t('onboarding.connect.recommended')}</span>}
                   </div>
                   <span className="text-[13px] text-text-3">{status}</span>
                 </div>
-                {connected && (
-                  <span className="inline-flex h-9 items-center gap-2 text-sm text-[#D9D9D9]">
-                    <Oyen mood="happy" size={24} />
-                    {t('onboarding.connect.connected')}
-                  </span>
-                )}
                 {needsSignIn && <ClaudeAccountControl onSignedIn={() => void connect('claude')} />}
-                {installed && !connected && !needsSignIn && (
-                  <Button variant="secondary" className="h-9" onClick={() => connect(r.id)} aria-label={t('onboarding.connect.connectAria', { name })}>
-                    {t('onboarding.connect.connect')}
+                {r.id === 'custom' && (
+                  <Button variant="secondary" className="h-9" aria-labelledby="connect-custom-setup connect-custom-name" id="connect-custom-setup" onClick={() => setApiOpen(true)}>
+                    {installed ? t('settings.apiChange') : t('onboarding.connect.setUp')}
                   </Button>
                 )}
-                {!installed && (
+                {r.id !== 'custom' && installed && !needsSignIn && (
+                  <Button
+                    id={`connect-${r.id}-action`}
+                    variant={connected ? 'ghost' : 'secondary'}
+                    className={connected ? 'h-9 cursor-default px-0 text-foreground hover:bg-transparent' : 'h-9'}
+                    aria-disabled={connected || undefined}
+                    aria-labelledby={connected ? `connect-${r.id}-action connect-${r.id}-name` : undefined}
+                    aria-label={connected ? undefined : t('onboarding.connect.connectAria', { name })}
+                    onClick={() => { if (!connected) void connect(r.id); }}
+                  >
+                    {connected && <Oyen mood="happy" size={24} decorative />}
+                    {t(connected ? 'onboarding.connect.connected' : 'onboarding.connect.connect')}
+                  </Button>
+                )}
+                {r.id !== 'custom' && !installed && (
                   <a
-                    href={r.installUrl ?? '#'}
+                    id={`connect-${r.id}-install`}
+                    aria-labelledby={`connect-${r.id}-install connect-${r.id}-name`}
+                    href={AGENT_INSTALL_URL[r.id]}
                     target="_blank"
                     rel="noreferrer"
                     className="inline-flex h-9 items-center px-1 text-sm font-medium text-primary hover:text-accent-hover"
                   >
-                    {r.id === 'custom' ? t('onboarding.connect.addManually') : t('onboarding.connect.howToInstall')}
+                    {t('onboarding.connect.howToInstall')}
                   </a>
                 )}
               </li>
@@ -114,7 +140,14 @@ export function Connect() {
           })}
         </ul>
 
-        {error && <p role="alert" className="m-0 text-[13px] text-orange-light">{error}</p>}
+        <ApiSetupDialog
+          open={apiOpen}
+          onOpenChange={setApiOpen}
+          onSaved={(next) => {
+            setSettings(next);
+            detectAgents().then(setAgents).catch(() => {});
+          }}
+        />
 
         <div className="flex items-center gap-4 px-1">
           <img src={defaultOyen} alt="" aria-hidden="true" className="size-10 shrink-0" />

@@ -105,6 +105,7 @@ fn tray_menu<R: Runtime>(app: &AppHandle<R>, lang: Option<UiLanguage>) -> tauri:
 pub fn build_tray<R: Runtime>(app: &AppHandle<R>, settings: &Settings) -> tauri::Result<TrayIcon<R>> {
     TrayIconBuilder::with_id(TRAY_ID)
         .icon(tauri::image::Image::from_bytes(TRAY_ICON)?)
+        .tooltip(app.package_info().name.as_str())
         .icon_as_template(true)
         .menu(&tray_menu(app, settings.ui_language)?)
         .show_menu_on_left_click(true)

@@ -106,10 +106,11 @@ export function TurnRail({
 
   if (turns.length < 2 || !overflow) return null;
 
-  const jump = (mi: number) => {
+  const jump = (mi: number, moveFocus: boolean) => {
     const box = scrollRef.current;
     const el = box?.querySelector<HTMLElement>(`[data-turn="${mi}"]`);
     if (!box || !el) return;
+    if (moveFocus) el.focus({ preventScroll: true });
     const top = box.scrollTop + el.getBoundingClientRect().top - box.getBoundingClientRect().top - 16;
     box.scrollTo({ top: Math.max(0, top), behavior: reduced() ? 'auto' : 'smooth' });
   };
@@ -135,6 +136,7 @@ export function TurnRail({
   };
 
   const onKeyDown = (e: React.KeyboardEvent) => {
+    if (e.altKey || e.ctrlKey || e.metaKey || e.shiftKey) return;
     const keys = ['ArrowUp', 'ArrowDown', 'Home', 'End'];
     if (!keys.includes(e.key)) return;
     const btns = Array.from(strip.current?.children ?? []) as HTMLElement[];
@@ -168,7 +170,7 @@ export function TurnRail({
               aria-label={t('chat.jumpTo', { text: turn.text.slice(0, 80) })}
               aria-current={isActive ? 'true' : undefined}
               tabIndex={isActive ? 0 : -1}
-              onClick={() => jump(turn.index)}
+              onClick={(event) => jump(turn.index, event.detail === 0)}
               onMouseEnter={(e) => show(i, e.currentTarget)}
               onMouseLeave={() => setHover(null)}
               onFocus={(e) => show(i, e.currentTarget)}

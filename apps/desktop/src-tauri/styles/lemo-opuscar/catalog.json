@@ -1,0 +1,1314 @@
+[
+  {
+    "id": "lemo-opuscar-crayon-book",
+    "name": "Crayon Picture Book",
+    "source": "builtin",
+    "sourceUrl": "https://github.com/lemomo-ai/lemo-opuscar/blob/143f387ad774525dc9abc0ff05fb5f4bfbaa5f02/styles/crayon-book/STYLE.md",
+    "notes": {
+      "camera": "Hold on a single page; use page turns to change scenes.",
+      "type": "Round hand-lettering; keep captions on quiet paper."
+    },
+    "prompt": "Draw a storybook page in wax crayon, building recognizable shapes from rough scribbles on textured paper. Reveal hidden details with a translucent wash that skips over the wax.",
+    "createdAt": "2026-11-08T08:46:02Z",
+    "engine": "hyperframes",
+    "version": 1,
+    "palette": [
+      "#F7E8C8",
+      "#E3654F",
+      "#407CA8",
+      "#4E855E"
+    ]
+  },
+  {
+    "id": "lemo-opuscar-watercolor",
+    "name": "Watercolor Brush",
+    "source": "builtin",
+    "sourceUrl": "https://github.com/lemomo-ai/lemo-opuscar/blob/143f387ad774525dc9abc0ff05fb5f4bfbaa5f02/styles/watercolor/STYLE.md",
+    "notes": {
+      "camera": "Slow glides across one continuous painted sheet; transition with a brush-edge wash.",
+      "type": "Elegant serif captions and handwritten specimen notes."
+    },
+    "prompt": "Build a field journal in translucent pigment. Reveal each form stroke by stroke, let overlapping washes pool at the edges, and grow handwritten leader lines toward the painted subject.",
+    "createdAt": "2026-11-08T08:46:02Z",
+    "engine": "hyperframes",
+    "version": 1,
+    "palette": [
+      "#F3E2C8",
+      "#9FB4C4",
+      "#5F7486",
+      "#C8442A"
+    ]
+  },
+  {
+    "id": "lemo-opuscar-ink-wash",
+    "name": "Chinese Ink Wash",
+    "source": "builtin",
+    "sourceUrl": "https://github.com/lemomo-ai/lemo-opuscar/blob/143f387ad774525dc9abc0ff05fb5f4bfbaa5f02/styles/ink-wash/STYLE.md",
+    "notes": {
+      "camera": "Drift across the sheet like a handscroll; use long holds around one gesture.",
+      "type": "Small brush-like titles and a readable serif for captions."
+    },
+    "prompt": "Use expressive ink strokes on fibrous rice paper. Let unpainted space carry distance and use spreading ink and mist to reveal mountains, waves, figures or transitions.",
+    "createdAt": "2026-11-08T08:46:02Z",
+    "engine": "hyperframes",
+    "version": 1,
+    "palette": [
+      "#F2EADB",
+      "#282624",
+      "#74736E",
+      "#9C352B"
+    ]
+  },
+  {
+    "id": "lemo-opuscar-impasto",
+    "name": "Impasto Oil Painting",
+    "source": "builtin",
+    "sourceUrl": "https://github.com/lemomo-ai/lemo-opuscar/blob/143f387ad774525dc9abc0ff05fb5f4bfbaa5f02/styles/impasto/STYLE.md",
+    "notes": {
+      "camera": "Move slowly across the surface or push into a raised brush mark.",
+      "type": "Use restrained editorial labels in a quiet patch of the frame."
+    },
+    "prompt": "Compose large value shapes from thick palette-knife planes. Add directional ridges and raking light at the focal point, keeping surrounding areas calm enough for the subject to read.",
+    "createdAt": "2026-11-08T08:46:02Z",
+    "engine": "hyperframes",
+    "version": 1,
+    "palette": [
+      "#E7D4A8",
+      "#283E57",
+      "#A6422B",
+      "#62704C"
+    ]
+  },
+  {
+    "id": "lemo-opuscar-one-line",
+    "name": "One-line Drawing",
+    "source": "builtin",
+    "sourceUrl": "https://github.com/lemomo-ai/lemo-opuscar/blob/143f387ad774525dc9abc0ff05fb5f4bfbaa5f02/styles/one-line/STYLE.md",
+    "notes": {
+      "camera": "Hold a clean page while the line travels; follow it only when needed.",
+      "type": "Minimal sans-serif text separated from the moving line."
+    },
+    "prompt": "Reveal one continuous ink path that bends into every subject. Carry a part of the old silhouette into the new one so the drawing itself connects the scenes.",
+    "createdAt": "2026-11-08T08:46:02Z",
+    "engine": "hyperframes",
+    "version": 1,
+    "palette": [
+      "#F7F1E5",
+      "#222222",
+      "#C94736"
+    ]
+  },
+  {
+    "id": "lemo-opuscar-whiteboard",
+    "name": "Whiteboard Explainer",
+    "source": "builtin",
+    "sourceUrl": "https://github.com/lemomo-ai/lemo-opuscar/blob/143f387ad774525dc9abc0ff05fb5f4bfbaa5f02/styles/whiteboard/STYLE.md",
+    "notes": {
+      "camera": "Pan between regions and pull back to reveal the complete diagram.",
+      "type": "Handwritten labels with a readable caption layer."
+    },
+    "prompt": "Teach on a single whiteboard with ink written in visible stroke order. Use arrows, moving magnets and erasable clusters to show connections instead of replacing the whole frame.",
+    "createdAt": "2026-11-08T08:46:02Z",
+    "engine": "hyperframes",
+    "version": 1,
+    "palette": [
+      "#F5F5F2",
+      "#22272D",
+      "#2460A7",
+      "#B9282B"
+    ]
+  },
+  {
+    "id": "lemo-opuscar-shadow-puppet",
+    "name": "Shadow Puppetry",
+    "source": "builtin",
+    "sourceUrl": "https://github.com/lemomo-ai/lemo-opuscar/blob/143f387ad774525dc9abc0ff05fb5f4bfbaa5f02/styles/shadow-puppet/STYLE.md",
+    "notes": {
+      "camera": "Keep a proscenium view; change scale by moving silhouettes toward the light.",
+      "type": "Frame short titles outside busy puppet silhouettes."
+    },
+    "prompt": "Stage jointed cutout puppets with lace-like openings on an illuminated cloth screen. Tilt and swing limbs around visible pivots while light leaks through colored cutouts.",
+    "createdAt": "2026-11-08T08:46:02Z",
+    "engine": "hyperframes",
+    "version": 1,
+    "palette": [
+      "#E9B26F",
+      "#422418",
+      "#B23B37",
+      "#276D66"
+    ]
+  },
+  {
+    "id": "lemo-opuscar-ukiyoe",
+    "name": "Ukiyo-e",
+    "source": "builtin",
+    "sourceUrl": "https://github.com/lemomo-ai/lemo-opuscar/blob/143f387ad774525dc9abc0ff05fb5f4bfbaa5f02/styles/ukiyoe/STYLE.md",
+    "notes": {
+      "camera": "Travel along one print with shallow parallax; use a new sheet for major changes.",
+      "type": "Keep captions in a quiet paper margin with restrained editorial type."
+    },
+    "prompt": "Animate a woodblock-style scene with carved contours, flat pigment areas, visible paper grain and graded bokashi skies. Give waves, rain and textiles repeated carved marks.",
+    "createdAt": "2026-11-08T08:46:02Z",
+    "engine": "hyperframes",
+    "version": 1,
+    "palette": [
+      "#F2DFC0",
+      "#204C65",
+      "#7A9B8D",
+      "#B94736"
+    ]
+  },
+  {
+    "id": "lemo-opuscar-papercut-red",
+    "name": "Red Paper-cut",
+    "source": "builtin",
+    "sourceUrl": "https://github.com/lemomo-ai/lemo-opuscar/blob/143f387ad774525dc9abc0ff05fb5f4bfbaa5f02/styles/papercut-red/STYLE.md",
+    "notes": {
+      "camera": "Alternate between a flat overhead tableau and small pushes into the cutwork.",
+      "type": "Place short readable copy in open cream space."
+    },
+    "prompt": "Construct a festive world from connected red paper shapes and negative-space cutouts. Rotate pieces at paper hinges and use symmetrical openings to reveal detail.",
+    "createdAt": "2026-11-08T08:46:02Z",
+    "engine": "hyperframes",
+    "version": 1,
+    "palette": [
+      "#F9E8C8",
+      "#B31924",
+      "#6E141D",
+      "#D3984E"
+    ]
+  },
+  {
+    "id": "lemo-opuscar-paper-lantern",
+    "name": "Paper-cut Lightbox",
+    "source": "builtin",
+    "sourceUrl": "https://github.com/lemomo-ai/lemo-opuscar/blob/143f387ad774525dc9abc0ff05fb5f4bfbaa5f02/styles/paper-lantern/STYLE.md",
+    "notes": {
+      "camera": "Move through the layers with gentle macro parallax; occasionally pull back to show the box.",
+      "type": "Use short captions outside glowing openings."
+    },
+    "prompt": "Build a shallow lightbox from several cut-card layers, with soft shadows and a warm light behind the deepest sheet. Put bright windows or moons in actual cutouts.",
+    "createdAt": "2026-11-08T08:46:02Z",
+    "engine": "remotion",
+    "version": 1,
+    "palette": [
+      "#261A34",
+      "#694166",
+      "#E09253",
+      "#FBE4AF"
+    ]
+  },
+  {
+    "id": "lemo-opuscar-risograph",
+    "name": "Risograph Print",
+    "source": "builtin",
+    "sourceUrl": "https://github.com/lemomo-ai/lemo-opuscar/blob/143f387ad774525dc9abc0ff05fb5f4bfbaa5f02/styles/risograph/STYLE.md",
+    "notes": {
+      "camera": "Reveal one plate at a time; keep the printed sheet steady for reading.",
+      "type": "Use punchy display type and compact zine-style notes."
+    },
+    "prompt": "Create each frame from two or three translucent stencil inks over warm paper. Allow small registration offsets, halftone grain and darker overprints where inks meet.",
+    "createdAt": "2026-11-08T08:46:02Z",
+    "engine": "hyperframes",
+    "version": 1,
+    "palette": [
+      "#F6ECD9",
+      "#E45160",
+      "#287385",
+      "#38384B"
+    ]
+  },
+  {
+    "id": "lemo-opuscar-halftone-dossier",
+    "name": "Halftone Dossier",
+    "source": "builtin",
+    "sourceUrl": "https://github.com/lemomo-ai/lemo-opuscar/blob/143f387ad774525dc9abc0ff05fb5f4bfbaa5f02/styles/halftone-dossier/STYLE.md",
+    "notes": {
+      "camera": "Snap between evidence panels, then pause on each exhibit label.",
+      "type": "Heavy condensed headings, small monospaced exhibit IDs."
+    },
+    "prompt": "Present the story as a case file whose exhibits land one at a time. Use flat ink fills, coarse halftones, thick silhouettes, rubber stamps and offset headline shadows.",
+    "createdAt": "2026-11-08T08:46:02Z",
+    "engine": "hyperframes",
+    "version": 1,
+    "palette": [
+      "#F1E2C7",
+      "#242A31",
+      "#B43C40",
+      "#378C90"
+    ]
+  },
+  {
+    "id": "lemo-opuscar-woodcut",
+    "name": "Woodcut Print",
+    "source": "builtin",
+    "sourceUrl": "https://github.com/lemomo-ai/lemo-opuscar/blob/143f387ad774525dc9abc0ff05fb5f4bfbaa5f02/styles/woodcut/STYLE.md",
+    "notes": {
+      "camera": "Use slow reveals that expose gouges and broad silhouettes.",
+      "type": "Strong carved-looking headlines with plain readable captions."
+    },
+    "prompt": "Make the picture appear carved from a near-black block. Reveal highlights as irregular cuts, vary the hatch direction by surface and use a single accent for the crucial object.",
+    "createdAt": "2026-11-08T08:46:02Z",
+    "engine": "hyperframes",
+    "version": 1,
+    "palette": [
+      "#EFE2C3",
+      "#201D1B",
+      "#AB3624"
+    ]
+  },
+  {
+    "id": "lemo-opuscar-swiss-motion",
+    "name": "Swiss Motion Graphics",
+    "source": "builtin",
+    "sourceUrl": "https://github.com/lemomo-ai/lemo-opuscar/blob/143f387ad774525dc9abc0ff05fb5f4bfbaa5f02/styles/swiss-motion/STYLE.md",
+    "notes": {
+      "camera": "Use precise translations and mask reveals rather than floating camera moves.",
+      "type": "Flush-left typography with a strong size hierarchy."
+    },
+    "prompt": "Use a strict modular grid, one sans-serif family and a signal color. Animate exact alignments and grid-sized shifts, with a single hierarchy change per beat.",
+    "createdAt": "2026-11-08T08:46:02Z",
+    "engine": "hyperframes",
+    "version": 1,
+    "palette": [
+      "#F5F3EA",
+      "#191919",
+      "#D32829"
+    ]
+  },
+  {
+    "id": "lemo-opuscar-spy-titles",
+    "name": "60s Spy Title Sequence",
+    "source": "builtin",
+    "sourceUrl": "https://github.com/lemomo-ai/lemo-opuscar/blob/143f387ad774525dc9abc0ff05fb5f4bfbaa5f02/styles/spy-titles/STYLE.md",
+    "notes": {
+      "camera": "Cut on sharp musical accents and alternate wides with graphic close-ups.",
+      "type": "Large geometric credits are part of the scenery."
+    },
+    "prompt": "Build a mid-century title sequence out of cut-paper silhouettes and oversized letters. Let a letterform become a doorway, a shadow or part of the next composition.",
+    "createdAt": "2026-11-08T08:46:02Z",
+    "engine": "hyperframes",
+    "version": 1,
+    "palette": [
+      "#EFE2C9",
+      "#232329",
+      "#C7383A",
+      "#39827C"
+    ]
+  },
+  {
+    "id": "lemo-opuscar-art-deco",
+    "name": "Art Deco",
+    "source": "builtin",
+    "sourceUrl": "https://github.com/lemomo-ai/lemo-opuscar/blob/143f387ad774525dc9abc0ff05fb5f4bfbaa5f02/styles/art-deco/STYLE.md",
+    "notes": {
+      "camera": "Push along a central axis and open or close geometric shutters around it.",
+      "type": "Tall geometric capitals with restrained spacing."
+    },
+    "prompt": "Build a symmetrical lacquer-and-metal poster with etched lines, stepped arches, fan shapes and graded spotlights. Reveal details like bulbs lighting up one row at a time.",
+    "createdAt": "2026-11-08T08:46:02Z",
+    "engine": "hyperframes",
+    "version": 1,
+    "palette": [
+      "#121217",
+      "#B98C4D",
+      "#E6CF94",
+      "#233D3F"
+    ]
+  },
+  {
+    "id": "lemo-opuscar-blueprint",
+    "name": "Blueprint",
+    "source": "builtin",
+    "sourceUrl": "https://github.com/lemomo-ai/lemo-opuscar/blob/143f387ad774525dc9abc0ff05fb5f4bfbaa5f02/styles/blueprint/STYLE.md",
+    "notes": {
+      "camera": "Track along the drawing as details are added; pull back for the assembly.",
+      "type": "Technical mono labels, units and leader lines."
+    },
+    "prompt": "Reveal an engineering drawing in drafting order, from construction guides to the finished object and dimensions. Use fine white lines and true explanatory callouts on a blue sheet.",
+    "createdAt": "2026-11-08T08:46:02Z",
+    "engine": "hyperframes",
+    "version": 1,
+    "palette": [
+      "#14395D",
+      "#245F87",
+      "#D9F0EF",
+      "#F5CF7B"
+    ]
+  },
+  {
+    "id": "lemo-opuscar-stained-glass",
+    "name": "Stained Glass",
+    "source": "builtin",
+    "sourceUrl": "https://github.com/lemomo-ai/lemo-opuscar/blob/143f387ad774525dc9abc0ff05fb5f4bfbaa5f02/styles/stained-glass/STYLE.md",
+    "notes": {
+      "camera": "Start in shadow and follow the light across the window.",
+      "type": "Keep titles clear of bright glass and leadwork."
+    },
+    "prompt": "Divide the image into colored glass fragments with dark lead seams. Let a moving shaft of light uncover the story and cast colored patches onto surrounding stone.",
+    "createdAt": "2026-11-08T08:46:02Z",
+    "engine": "hyperframes",
+    "version": 1,
+    "palette": [
+      "#1D1D2B",
+      "#922E47",
+      "#2E617A",
+      "#DAA044"
+    ]
+  },
+  {
+    "id": "lemo-opuscar-pictogram-motion",
+    "name": "Pictogram Motion",
+    "source": "builtin",
+    "sourceUrl": "https://github.com/lemomo-ai/lemo-opuscar/blob/143f387ad774525dc9abc0ff05fb5f4bfbaa5f02/styles/pictogram-motion/STYLE.md",
+    "notes": {
+      "camera": "Use straight, beat-aligned moves and consistent framing between icons.",
+      "type": "Large signage text, short labels and generous spacing."
+    },
+    "prompt": "Build scenes from round-ended bars, discs and modular signage icons. Slide patterned grid cells in counterpoint and give each important action a distinct pictogram.",
+    "createdAt": "2026-11-08T08:46:02Z",
+    "engine": "hyperframes",
+    "version": 1,
+    "palette": [
+      "#F0E8D8",
+      "#132A32",
+      "#EB553C",
+      "#F1BE4D"
+    ]
+  },
+  {
+    "id": "lemo-opuscar-ascii-crt",
+    "name": "ASCII / CRT Terminal",
+    "source": "builtin",
+    "sourceUrl": "https://github.com/lemomo-ai/lemo-opuscar/blob/143f387ad774525dc9abc0ff05fb5f4bfbaa5f02/styles/ascii-crt/STYLE.md",
+    "notes": {
+      "camera": "Keep the screen grid fixed while character blocks scroll, blink or resolve.",
+      "type": "One monospace face; preserve stable character spacing."
+    },
+    "prompt": "Draw every object as actual characters on a fixed monospace grid. Vary glyph density to shade shapes and use a restrained phosphor glow and scanline overlay.",
+    "createdAt": "2026-11-08T08:46:02Z",
+    "engine": "hyperframes",
+    "version": 1,
+    "palette": [
+      "#091613",
+      "#42CA8C",
+      "#B8F5CD"
+    ]
+  },
+  {
+    "id": "lemo-opuscar-dataviz",
+    "name": "Data Storytelling",
+    "source": "builtin",
+    "sourceUrl": "https://github.com/lemomo-ai/lemo-opuscar/blob/143f387ad774525dc9abc0ff05fb5f4bfbaa5f02/styles/dataviz/STYLE.md",
+    "notes": {
+      "camera": "Follow the data through a pan or zoom; pull back to preserve context.",
+      "type": "Small handwritten notes paired with precise numeric labels."
+    },
+    "prompt": "Tell a story by drawing one chart mark at a time on cream paper. Highlight a single data point per beat with a penciled annotation; use real, labeled values and units.",
+    "createdAt": "2026-11-08T08:46:02Z",
+    "engine": "hyperframes",
+    "version": 1,
+    "palette": [
+      "#F3ECD9",
+      "#2B5377",
+      "#B73838",
+      "#242326"
+    ]
+  },
+  {
+    "id": "lemo-opuscar-iso-infographic",
+    "name": "Isometric Infographic",
+    "source": "builtin",
+    "sourceUrl": "https://github.com/lemomo-ai/lemo-opuscar/blob/143f387ad774525dc9abc0ff05fb5f4bfbaa5f02/styles/iso-infographic/STYLE.md",
+    "notes": {
+      "camera": "Use consistent isometric angles, opening the view only where something happens.",
+      "type": "Fine leader lines with high-contrast short labels."
+    },
+    "prompt": "Explain a system as an isometric diagram built from three-tone blocks. Lift lids or layers to show how components connect and encode quantities as countable marks.",
+    "createdAt": "2026-11-08T08:46:02Z",
+    "engine": "hyperframes",
+    "version": 1,
+    "palette": [
+      "#F5ECD9",
+      "#376A73",
+      "#7DB3A5",
+      "#E99A51"
+    ]
+  },
+  {
+    "id": "lemo-opuscar-dark-keynote",
+    "name": "Dark Tech Keynote",
+    "source": "builtin",
+    "sourceUrl": "https://github.com/lemomo-ai/lemo-opuscar/blob/143f387ad774525dc9abc0ff05fb5f4bfbaa5f02/styles/dark-keynote/STYLE.md",
+    "notes": {
+      "camera": "Push toward the relevant control, then reset to a clean centered view.",
+      "type": "Large clean sans-serif headings and a single brand accent."
+    },
+    "prompt": "Stage a product launch in a near-black studio with a hairline grid. Move interface cards with snap-grid precision, reveal details with soft light and reserve one large metric as the climax.",
+    "createdAt": "2026-11-08T08:46:02Z",
+    "engine": "hyperframes",
+    "version": 1,
+    "palette": [
+      "#10141E",
+      "#293041",
+      "#EFF4FA",
+      "#68A6FF"
+    ]
+  },
+  {
+    "id": "lemo-opuscar-rubber-hose",
+    "name": "1930s Rubber Hose Cartoon",
+    "source": "builtin",
+    "sourceUrl": "https://github.com/lemomo-ai/lemo-opuscar/blob/143f387ad774525dc9abc0ff05fb5f4bfbaa5f02/styles/rubber-hose/STYLE.md",
+    "notes": {
+      "camera": "Frame readable silhouettes, with quick poses on strong beats.",
+      "type": "Period-style cards for brief titles or captions."
+    },
+    "prompt": "Draw stretchy limbs and rounded black-and-white characters with a hand-inked wobble. Let props react with squash, stretch and a repeating swing rhythm.",
+    "createdAt": "2026-11-08T08:46:02Z",
+    "engine": "hyperframes",
+    "version": 1,
+    "palette": [
+      "#F2EDDC",
+      "#222222",
+      "#77736E"
+    ]
+  },
+  {
+    "id": "lemo-opuscar-cel-anime-80s",
+    "name": "80s Cel Anime",
+    "source": "builtin",
+    "sourceUrl": "https://github.com/lemomo-ai/lemo-opuscar/blob/143f387ad774525dc9abc0ff05fb5f4bfbaa5f02/styles/cel-anime-80s/STYLE.md",
+    "notes": {
+      "camera": "Hold strong poses, pan backgrounds and punctuate with fast cuts.",
+      "type": "Use small retro title graphics beside readable modern captions."
+    },
+    "prompt": "Use two-tone hand-painted cels over airbrushed backgrounds with rim light and constrained animation. Add restrained tape texture while keeping faces and captions clear.",
+    "createdAt": "2026-11-08T08:46:02Z",
+    "engine": "hyperframes",
+    "version": 1,
+    "palette": [
+      "#171C35",
+      "#E780A1",
+      "#514F91",
+      "#7CCBD5"
+    ]
+  },
+  {
+    "id": "lemo-opuscar-scifi-toon",
+    "name": "Sci-Fi Sitcom Toon",
+    "source": "builtin",
+    "sourceUrl": "https://github.com/lemomo-ai/lemo-opuscar/blob/143f387ad774525dc9abc0ff05fb5f4bfbaa5f02/styles/scifi-toon/STYLE.md",
+    "notes": {
+      "camera": "Use clear shot-reverse-shot staging; save the glowing portal for a transition.",
+      "type": "Bold compact lettering with a stable caption baseline."
+    },
+    "prompt": "Animate thick, slightly boiling outlines and flat colors in a space sitcom. Let contrasting reactions drive the scene and use a different restrained palette for each world.",
+    "createdAt": "2026-11-08T08:46:02Z",
+    "engine": "hyperframes",
+    "version": 1,
+    "palette": [
+      "#292043",
+      "#54C5A4",
+      "#D69C49",
+      "#E776A4"
+    ]
+  },
+  {
+    "id": "lemo-opuscar-pixel-rpg",
+    "name": "16-bit Pixel RPG",
+    "source": "builtin",
+    "sourceUrl": "https://github.com/lemomo-ai/lemo-opuscar/blob/143f387ad774525dc9abc0ff05fb5f4bfbaa5f02/styles/pixel-rpg/STYLE.md",
+    "notes": {
+      "camera": "Track through the tile map in whole pixels; cut to clear menu close-ups.",
+      "type": "Crisp bitmap-style labels; allow enough time for dialogue."
+    },
+    "prompt": "Stage scenes like a 16-bit role-playing game with tile maps, indexed sprites and typewriter dialogue boxes. Keep edges pixel-perfect and use menus as part of the narrative.",
+    "createdAt": "2026-11-08T08:46:02Z",
+    "engine": "hyperframes",
+    "version": 1,
+    "palette": [
+      "#27304F",
+      "#6F8A58",
+      "#DCAB63",
+      "#EFE3BC"
+    ]
+  },
+  {
+    "id": "lemo-opuscar-hd-2d",
+    "name": "HD-2D",
+    "source": "builtin",
+    "sourceUrl": "https://github.com/lemomo-ai/lemo-opuscar/blob/143f387ad774525dc9abc0ff05fb5f4bfbaa5f02/styles/hd-2d/STYLE.md",
+    "notes": {
+      "camera": "High three-quarter views with small tilt-shift dolly moves.",
+      "type": "Use quiet game-style labels at a consistent scale."
+    },
+    "prompt": "Place crisp pixel sprites in a lit 3D diorama with fog, practical lamps and shadow-catching surfaces. Preserve sharp sprite pixels against selective depth blur.",
+    "createdAt": "2026-11-08T08:46:02Z",
+    "engine": "remotion",
+    "version": 1,
+    "palette": [
+      "#253448",
+      "#E7AB67",
+      "#6D8C6E",
+      "#D7D0B5"
+    ]
+  },
+  {
+    "id": "lemo-opuscar-microgame",
+    "name": "Microgame Frenzy",
+    "source": "builtin",
+    "sourceUrl": "https://github.com/lemomo-ai/lemo-opuscar/blob/143f387ad774525dc9abc0ff05fb5f4bfbaa5f02/styles/microgame/STYLE.md",
+    "notes": {
+      "camera": "Use short countdowns, hard cuts and increasingly short rounds.",
+      "type": "One oversized imperative per round; outcome text in the same place."
+    },
+    "prompt": "Cut a sequence of tiny challenges around one action verb each. Change the graphic style between rounds while keeping the prompt and outcome clear.",
+    "createdAt": "2026-11-08T08:46:02Z",
+    "engine": "hyperframes",
+    "version": 1,
+    "palette": [
+      "#252135",
+      "#F8DF5D",
+      "#E95774",
+      "#59C3CF"
+    ]
+  },
+  {
+    "id": "lemo-opuscar-game-show",
+    "name": "Game Show Flat",
+    "source": "builtin",
+    "sourceUrl": "https://github.com/lemomo-ai/lemo-opuscar/blob/143f387ad774525dc9abc0ff05fb5f4bfbaa5f02/styles/game-show/STYLE.md",
+    "notes": {
+      "camera": "Land score changes and mascot reactions on a shared tempo grid.",
+      "type": "Fat playful labels with large, distinct scores."
+    },
+    "prompt": "Build a rhythm show from candy stripes, sunbursts and flat mascot figures. Alternate call and response, then reward each round with an unmistakable judgement word.",
+    "createdAt": "2026-11-08T08:46:02Z",
+    "engine": "hyperframes",
+    "version": 1,
+    "palette": [
+      "#F7DD74",
+      "#E6537D",
+      "#5698D4",
+      "#25243B"
+    ]
+  },
+  {
+    "id": "lemo-opuscar-silent-film",
+    "name": "1920s Silent Film",
+    "source": "builtin",
+    "sourceUrl": "https://github.com/lemomo-ai/lemo-opuscar/blob/143f387ad774525dc9abc0ff05fb5f4bfbaa5f02/styles/silent-film/STYLE.md",
+    "notes": {
+      "camera": "Use locked theatre framing, occasional iris transitions and deliberate title holds.",
+      "type": "High-contrast serif intertitles with short lines."
+    },
+    "prompt": "Use ink-and-silver-wash images inside a period projection frame. Carry story beats with intertitles and expressive posing; keep flicker and wear gentle enough to read.",
+    "createdAt": "2026-11-08T08:46:02Z",
+    "engine": "hyperframes",
+    "version": 1,
+    "palette": [
+      "#1E1B1A",
+      "#E1D1AD",
+      "#8B7B66"
+    ]
+  },
+  {
+    "id": "lemo-opuscar-backrooms",
+    "name": "Liminal Found Footage",
+    "source": "builtin",
+    "sourceUrl": "https://github.com/lemomo-ai/lemo-opuscar/blob/143f387ad774525dc9abc0ff05fb5f4bfbaa5f02/styles/backrooms/STYLE.md",
+    "notes": {
+      "camera": "Hold uneasy wide angles and use slow imperfect handheld drift.",
+      "type": "Small timestamp graphics only for fictional or known timing."
+    },
+    "prompt": "Recreate a camcorder exploring empty fluorescent corridors. Use repeating architecture, lingering unease and subtle tape defects while keeping important details visible.",
+    "createdAt": "2026-11-08T08:46:02Z",
+    "engine": "hyperframes",
+    "version": 1,
+    "palette": [
+      "#242A23",
+      "#B8B27A",
+      "#7A7864",
+      "#DDD7A9"
+    ]
+  },
+  {
+    "id": "lemo-opuscar-brick-toy",
+    "name": "Brick Toy",
+    "source": "builtin",
+    "sourceUrl": "https://github.com/lemomo-ai/lemo-opuscar/blob/143f387ad774525dc9abc0ff05fb5f4bfbaa5f02/styles/brick-toy/STYLE.md",
+    "notes": {
+      "camera": "Shoot close at tabletop height; hold poses between small physical moves.",
+      "type": "Simple title cards that complement bold block colors."
+    },
+    "prompt": "Make a tactile stop-motion world of interlocking plastic bricks with visible studs. Animate held poses under a desk-lamp look and use original toy shapes.",
+    "createdAt": "2026-11-08T08:46:02Z",
+    "engine": "remotion",
+    "version": 1,
+    "palette": [
+      "#F3CA54",
+      "#BF3F34",
+      "#4275AB",
+      "#ECE5D6"
+    ]
+  },
+  {
+    "id": "lemo-opuscar-paper-popup",
+    "name": "Paper Pop-up Book",
+    "source": "builtin",
+    "sourceUrl": "https://github.com/lemomo-ai/lemo-opuscar/blob/143f387ad774525dc9abc0ff05fb5f4bfbaa5f02/styles/paper-popup/STYLE.md",
+    "notes": {
+      "camera": "Use a tabletop macro view and page-turn transitions.",
+      "type": "Put readable storybook text on flat page areas."
+    },
+    "prompt": "Open a book into hinged paper stages with fold creases and shadows. Move white-bordered cutout characters among layers that stand up as the page opens.",
+    "createdAt": "2026-11-08T08:46:02Z",
+    "engine": "remotion",
+    "version": 1,
+    "palette": [
+      "#F7E7C8",
+      "#B6515F",
+      "#4A8F87",
+      "#D8AB5D"
+    ]
+  },
+  {
+    "id": "lemo-opuscar-tilt-shift",
+    "name": "Tilt-Shift Miniature",
+    "source": "builtin",
+    "sourceUrl": "https://github.com/lemomo-ai/lemo-opuscar/blob/143f387ad774525dc9abc0ff05fb5f4bfbaa5f02/styles/tilt-shift/STYLE.md",
+    "notes": {
+      "camera": "Use high oblique framing; keep the focus band on the subject.",
+      "type": "Small crisp captions outside the most blurred areas."
+    },
+    "prompt": "Present a real-looking place as a tabletop miniature using a narrow focus band, small moving figures and compressed time. Build scale cues into the scene.",
+    "createdAt": "2026-11-08T08:46:02Z",
+    "engine": "remotion",
+    "version": 1,
+    "palette": [
+      "#26465B",
+      "#76A179",
+      "#E5C68E",
+      "#BD6649"
+    ]
+  },
+  {
+    "id": "lemo-opuscar-lowpoly-island",
+    "name": "Low-poly Isometric Island",
+    "source": "builtin",
+    "sourceUrl": "https://github.com/lemomo-ai/lemo-opuscar/blob/143f387ad774525dc9abc0ff05fb5f4bfbaa5f02/styles/lowpoly-island/STYLE.md",
+    "notes": {
+      "camera": "Use a stable isometric camera with small glides or rotations.",
+      "type": "Simple rounded labels that stay separate from the terrain."
+    },
+    "prompt": "Build an orthographic island from simple geometric blocks and faceted forms. Introduce each small object with a measured bounce while keeping the diorama readable.",
+    "createdAt": "2026-11-08T08:46:02Z",
+    "engine": "remotion",
+    "version": 1,
+    "palette": [
+      "#C9E7DF",
+      "#426F86",
+      "#81A95D",
+      "#E4A765"
+    ]
+  },
+  {
+    "id": "lemo-opuscar-glass-product",
+    "name": "Glass Product Render",
+    "source": "builtin",
+    "sourceUrl": "https://github.com/lemomo-ai/lemo-opuscar/blob/143f387ad774525dc9abc0ff05fb5f4bfbaa5f02/styles/glass-product/STYLE.md",
+    "notes": {
+      "camera": "Slow studio orbits and a measured push through separated pieces.",
+      "type": "Spare product labels in dark negative space."
+    },
+    "prompt": "Light a glass object in a dark-field studio. Use transparent and frosted surfaces, thin strip-light reflections and an exploded arrangement that closes together.",
+    "createdAt": "2026-11-08T08:46:02Z",
+    "engine": "remotion",
+    "version": 1,
+    "palette": [
+      "#101722",
+      "#69A5BA",
+      "#C6F0F0",
+      "#996DBA"
+    ]
+  },
+  {
+    "id": "lemo-opuscar-urban-sketch",
+    "name": "Urban Sketch · Pen & Wash",
+    "source": "builtin",
+    "sourceUrl": "https://github.com/lemomo-ai/lemo-opuscar/blob/143f387ad774525dc9abc0ff05fb5f4bfbaa5f02/styles/urban-sketch/STYLE.md",
+    "notes": {
+      "camera": "Glide between buildings and details as if looking around a sketchbook.",
+      "type": "Small hand-lettered place names and quiet captions."
+    },
+    "prompt": "Reveal an on-location sketch with sepia pen marks that overshoot corners and loose watercolor that spills a little past the lines. Let the image fade into the grain of the page.",
+    "createdAt": "2026-11-08T08:46:02Z",
+    "engine": "hyperframes",
+    "version": 1,
+    "palette": [
+      "#F3E6D0",
+      "#604738",
+      "#7497A0",
+      "#BA6C4B"
+    ]
+  },
+  {
+    "id": "lemo-opuscar-living-screencast",
+    "name": "Living Screencast",
+    "source": "builtin",
+    "sourceUrl": "https://github.com/lemomo-ai/lemo-opuscar/blob/143f387ad774525dc9abc0ff05fb5f4bfbaa5f02/styles/living-screencast/STYLE.md",
+    "notes": {
+      "camera": "Zoom into one control per beat and return to the wider interface for context.",
+      "type": "Keep UI labels sharp, with compact captions outside the interface."
+    },
+    "prompt": "Reconstruct the interface as clean, readable screen recording graphics. Give a small pixel mascot a role in showing where to click, what changed and why.",
+    "createdAt": "2026-11-08T08:46:02Z",
+    "engine": "hyperframes",
+    "version": 1,
+    "palette": [
+      "#171F30",
+      "#F1F4F8",
+      "#538CE6",
+      "#FCBA61"
+    ]
+  },
+  {
+    "id": "lemo-opuscar-midcentury-toon",
+    "name": "Mid-century Cartoon",
+    "source": "builtin",
+    "sourceUrl": "https://github.com/lemomo-ai/lemo-opuscar/blob/143f387ad774525dc9abc0ff05fb5f4bfbaa5f02/styles/midcentury-toon/STYLE.md",
+    "notes": {
+      "camera": "Frame clear step-by-step actions and pause before each change.",
+      "type": "Friendly mid-century display lettering with simple instructions."
+    },
+    "prompt": "Use limited-animation flat shapes with slightly offset ink outlines. Hold character bodies steady while the hands perform each step against abstract color-block rooms.",
+    "createdAt": "2026-11-08T08:46:02Z",
+    "engine": "hyperframes",
+    "version": 1,
+    "palette": [
+      "#F4E4C2",
+      "#3E7E7C",
+      "#C96145",
+      "#E3AE54"
+    ]
+  },
+  {
+    "id": "lemo-opuscar-hologram-hud",
+    "name": "Sci-fi Hologram HUD",
+    "source": "builtin",
+    "sourceUrl": "https://github.com/lemomo-ai/lemo-opuscar/blob/143f387ad774525dc9abc0ff05fb5f4bfbaa5f02/styles/hologram-hud/STYLE.md",
+    "notes": {
+      "camera": "Follow one scan sweep and push into the selected part before resetting.",
+      "type": "Thin technical mono labels with enough contrast for data."
+    },
+    "prompt": "Scan an object into a glowing wireframe, then lock targeting boxes onto relevant parts. Peel those parts out into small exploded views with legible values.",
+    "createdAt": "2026-11-08T08:46:02Z",
+    "engine": "hyperframes",
+    "version": 1,
+    "palette": [
+      "#071522",
+      "#47CCE2",
+      "#91E7E3",
+      "#F2B76D"
+    ]
+  },
+  {
+    "id": "lemo-opuscar-engraving",
+    "name": "Copperplate Engraving",
+    "source": "builtin",
+    "sourceUrl": "https://github.com/lemomo-ai/lemo-opuscar/blob/143f387ad774525dc9abc0ff05fb5f4bfbaa5f02/styles/engraving/STYLE.md",
+    "notes": {
+      "camera": "Hold on the plate; slide a loupe over one engraved detail.",
+      "type": "Small serif plate labels with fine rules."
+    },
+    "prompt": "Show an intaglio proof coming together from swelling contour strokes, hatching and cross-hatching. Reveal magnified details beside the plate and finish with a restrained wash.",
+    "createdAt": "2026-11-08T08:46:02Z",
+    "engine": "hyperframes",
+    "version": 1,
+    "palette": [
+      "#F2E5C9",
+      "#2A2522",
+      "#A46A4E",
+      "#6D8C89"
+    ]
+  },
+  {
+    "id": "lemo-opuscar-silkscreen-poster",
+    "name": "Silkscreen Travel Poster",
+    "source": "builtin",
+    "sourceUrl": "https://github.com/lemomo-ai/lemo-opuscar/blob/143f387ad774525dc9abc0ff05fb5f4bfbaa5f02/styles/silkscreen-poster/STYLE.md",
+    "notes": {
+      "camera": "Pull in one colored layer per beat, then hold the finished poster.",
+      "type": "Strong destination headlines with large clean shapes."
+    },
+    "prompt": "Compose a destination or event as flat screen-printed ink layers. Use stepped tones, hard edges and small paper gaps to suggest hand registration.",
+    "createdAt": "2026-11-08T08:46:02Z",
+    "engine": "hyperframes",
+    "version": 1,
+    "palette": [
+      "#F3E4C5",
+      "#227A87",
+      "#DB6943",
+      "#E3B64D"
+    ]
+  },
+  {
+    "id": "lemo-opuscar-satellite-briefing",
+    "name": "Satellite Briefing",
+    "source": "builtin",
+    "sourceUrl": "https://github.com/lemomo-ai/lemo-opuscar/blob/143f387ad774525dc9abc0ff05fb5f4bfbaa5f02/styles/satellite-briefing/STYLE.md",
+    "notes": {
+      "camera": "Zoom from overview to measured area through aligned layers.",
+      "type": "Use small but legible labels for place, unit and source."
+    },
+    "prompt": "Build a restrained analyst view with map layers, fine measurement lines and a reticle. Use provided or verified geographic data; label diagrammatic views as illustrations.",
+    "createdAt": "2026-11-08T08:46:02Z",
+    "engine": "hyperframes",
+    "version": 1,
+    "palette": [
+      "#242C31",
+      "#929B9B",
+      "#EEF1E8",
+      "#E4AC52"
+    ]
+  },
+  {
+    "id": "lemo-opuscar-briefing-board",
+    "name": "Engineering Briefing Board",
+    "source": "builtin",
+    "sourceUrl": "https://github.com/lemomo-ai/lemo-opuscar/blob/143f387ad774525dc9abc0ff05fb5f4bfbaa5f02/styles/briefing-board/STYLE.md",
+    "notes": {
+      "camera": "Follow drawn connections across the board; pull back to reveal the decision.",
+      "type": "Use marker-like headings and neat evidence tags."
+    },
+    "prompt": "Stage an engineering comparison on a marker board with cutout exhibits, magnets and a ruler. Assign consistent meanings to three ink colors and tie each claim to the supplied facts.",
+    "createdAt": "2026-11-08T08:46:02Z",
+    "engine": "hyperframes",
+    "version": 1,
+    "palette": [
+      "#F2F0E4",
+      "#2C4045",
+      "#2B69A5",
+      "#B54E43"
+    ]
+  },
+  {
+    "id": "lemo-opuscar-lidar-survey",
+    "name": "LiDAR Survey",
+    "source": "builtin",
+    "sourceUrl": "https://github.com/lemomo-ai/lemo-opuscar/blob/143f387ad774525dc9abc0ff05fb5f4bfbaa5f02/styles/lidar-survey/STYLE.md",
+    "notes": {
+      "camera": "Use one continuous camera path through points and the revealed surface.",
+      "type": "Hairline instruments, units and source labels."
+    },
+    "prompt": "Move through a dark measured point cloud, then use a scan plane to reveal its solid surface and outline distances. Use supplied scans for claims or label a schematic clearly.",
+    "createdAt": "2026-11-08T08:46:02Z",
+    "engine": "remotion",
+    "version": 1,
+    "palette": [
+      "#101C25",
+      "#4EC3BC",
+      "#88B878",
+      "#E1CA85"
+    ]
+  },
+  {
+    "id": "lemo-opuscar-white-model",
+    "name": "Projection on White Model",
+    "source": "builtin",
+    "sourceUrl": "https://github.com/lemomo-ai/lemo-opuscar/blob/143f387ad774525dc9abc0ff05fb5f4bfbaa5f02/styles/white-model/STYLE.md",
+    "notes": {
+      "camera": "Orbit gently while lighting layers change; hold for each legend.",
+      "type": "Put precise legend labels in dark empty space."
+    },
+    "prompt": "Project data layers onto a static matte-white scale model on a dark plinth. Make each overlay behave like colored light projected onto the surfaces.",
+    "createdAt": "2026-11-08T08:46:02Z",
+    "engine": "remotion",
+    "version": 1,
+    "palette": [
+      "#20212A",
+      "#E8E8E1",
+      "#66A6EB",
+      "#E56C70"
+    ]
+  },
+  {
+    "id": "lemo-opuscar-data-physical",
+    "name": "Data Physicalization",
+    "source": "builtin",
+    "sourceUrl": "https://github.com/lemomo-ai/lemo-opuscar/blob/143f387ad774525dc9abc0ff05fb5f4bfbaa5f02/styles/data-physical/STYLE.md",
+    "notes": {
+      "camera": "Track along the front edge of the stacks; pull back for comparison.",
+      "type": "Show units and sourced values beside the physical marks."
+    },
+    "prompt": "Turn quantities into countable physical units such as blocks, plates or coins. Make stack heights proportional to verified values and use studio light to reveal material differences.",
+    "createdAt": "2026-11-08T08:46:02Z",
+    "engine": "remotion",
+    "version": 1,
+    "palette": [
+      "#E4DBCA",
+      "#384149",
+      "#A77855",
+      "#4F8489"
+    ]
+  },
+  {
+    "id": "lemo-opuscar-teardown",
+    "name": "Exploded Teardown",
+    "source": "builtin",
+    "sourceUrl": "https://github.com/lemomo-ai/lemo-opuscar/blob/143f387ad774525dc9abc0ff05fb5f4bfbaa5f02/styles/teardown/STYLE.md",
+    "notes": {
+      "camera": "Move between layers without losing the assembly orientation.",
+      "type": "Pair each concise part name with its measured spec or source."
+    },
+    "prompt": "Explode a product along one assembly axis. Pause on individual components with supplied specifications, then return the layers to a single object.",
+    "createdAt": "2026-11-08T08:46:02Z",
+    "engine": "remotion",
+    "version": 1,
+    "palette": [
+      "#151C25",
+      "#566D83",
+      "#E5E9E5",
+      "#D6924B"
+    ]
+  },
+  {
+    "id": "lemo-opuscar-microscope",
+    "name": "Microscope Story",
+    "source": "builtin",
+    "sourceUrl": "https://github.com/lemomo-ai/lemo-opuscar/blob/143f387ad774525dc9abc0ff05fb5f4bfbaa5f02/styles/microscope/STYLE.md",
+    "notes": {
+      "camera": "Keep the same visual point through magnification changes; pause when focus settles.",
+      "type": "Label scale, units and source without covering the specimen."
+    },
+    "prompt": "Move from a glass slide to a specimen through successive scales with careful focus sweeps. Use supplied microscopy and calibrated scale bars, or label a schematic as an illustration.",
+    "createdAt": "2026-11-08T08:46:02Z",
+    "engine": "hyperframes",
+    "version": 1,
+    "palette": [
+      "#19252A",
+      "#81A99D",
+      "#E0D8B5",
+      "#AB759B"
+    ]
+  },
+  {
+    "id": "lemo-opuscar-archive-lighttable",
+    "name": "Archive Light Table",
+    "source": "builtin",
+    "sourceUrl": "https://github.com/lemomo-ai/lemo-opuscar/blob/143f387ad774525dc9abc0ff05fb5f4bfbaa5f02/styles/archive-lighttable/STYLE.md",
+    "notes": {
+      "camera": "Use an overhead view with a tight insert for the magnified detail.",
+      "type": "Small catalogue identifiers, dates and precise quoted fragments."
+    },
+    "prompt": "Arrange archive materials on a cool backlit surface. Bring a loupe over a supplied artifact, turn a negative positive or isolate a detail while retaining the object's catalogue identity.",
+    "createdAt": "2026-11-08T08:46:02Z",
+    "engine": "hyperframes",
+    "version": 1,
+    "palette": [
+      "#20272C",
+      "#C1CDD1",
+      "#F4EAD5",
+      "#A67C58"
+    ]
+  },
+  {
+    "id": "lemo-opuscar-caption-news",
+    "name": "Caption News",
+    "source": "builtin",
+    "sourceUrl": "https://github.com/lemomo-ai/lemo-opuscar/blob/143f387ad774525dc9abc0ff05fb5f4bfbaa5f02/styles/caption-news/STYLE.md",
+    "notes": {
+      "camera": "Cut on strong beats but hold dates and numbers long enough to read.",
+      "type": "Bold condensed captions with one yellow emphasis block."
+    },
+    "prompt": "Make a social-news segment readable at a glance. Combine verified documents or supplied footage with large caption blocks, one highlighted keyword, and source tags beside figures.",
+    "createdAt": "2026-11-08T08:46:02Z",
+    "engine": "hyperframes",
+    "version": 1,
+    "palette": [
+      "#1C2128",
+      "#F3F4EB",
+      "#EAC447",
+      "#557A8D"
+    ]
+  },
+  {
+    "id": "lemo-opuscar-newsreel",
+    "name": "1920s Newsreel",
+    "source": "builtin",
+    "sourceUrl": "https://github.com/lemomo-ai/lemo-opuscar/blob/143f387ad774525dc9abc0ff05fb5f4bfbaa5f02/styles/newsreel/STYLE.md",
+    "notes": {
+      "camera": "Use period wipes, flips and irises with brisk headline beats.",
+      "type": "High-contrast condensed headlines and small date cards."
+    },
+    "prompt": "Stage a period newsreel with a globe ident, spinning paper headlines, map inserts and place-and-date cards. Use supplied or verified archive material for historical claims.",
+    "createdAt": "2026-11-08T08:46:02Z",
+    "engine": "hyperframes",
+    "version": 1,
+    "palette": [
+      "#251F1C",
+      "#DAD1B5",
+      "#8C8074",
+      "#AA6352"
+    ]
+  },
+  {
+    "id": "lemo-opuscar-countdown",
+    "name": "Live Countdown Split-screen",
+    "source": "builtin",
+    "sourceUrl": "https://github.com/lemomo-ai/lemo-opuscar/blob/143f387ad774525dc9abc0ff05fb5f4bfbaa5f02/styles/countdown/STYLE.md",
+    "notes": {
+      "camera": "Keep simultaneous panels on the same clock and hold the payoff.",
+      "type": "Large tabular digits with clear labels for each view."
+    },
+    "prompt": "Center an event on a visible countdown. Add synchronized split-screen cells as zero approaches, then merge them to emphasize the result. Use only known timing or label a dramatization.",
+    "createdAt": "2026-11-08T08:46:02Z",
+    "engine": "hyperframes",
+    "version": 1,
+    "palette": [
+      "#1D2533",
+      "#F4F6F4",
+      "#F3AE43",
+      "#E36356"
+    ]
+  },
+  {
+    "id": "lemo-opuscar-city-symphony",
+    "name": "Time-lapse Symphony",
+    "source": "builtin",
+    "sourceUrl": "https://github.com/lemomo-ai/lemo-opuscar/blob/143f387ad774525dc9abc0ff05fb5f4bfbaa5f02/styles/city-symphony/STYLE.md",
+    "notes": {
+      "camera": "Tighten cut intervals in stages and use a decisive closing cut.",
+      "type": "Keep captions sparse so motion and composition carry the sequence."
+    },
+    "prompt": "Arrange motion into a city rhythm with compressed traffic, crowds or weather. Alternate accumulating movement with one long contrasting hold; use supplied footage or an original animated city.",
+    "createdAt": "2026-11-08T08:46:02Z",
+    "engine": "hyperframes",
+    "version": 1,
+    "palette": [
+      "#18243D",
+      "#427493",
+      "#F2AC58",
+      "#E9D5AD"
+    ]
+  },
+  {
+    "id": "lemo-opuscar-visual-investigation",
+    "name": "Visual Investigation",
+    "source": "builtin",
+    "sourceUrl": "https://github.com/lemomo-ai/lemo-opuscar/blob/143f387ad774525dc9abc0ff05fb5f4bfbaa5f02/styles/visual-investigation/STYLE.md",
+    "notes": {
+      "camera": "Use synchronized views and stable zooms that preserve orientation.",
+      "type": "Use legible timestamps and source tags by each exhibit."
+    },
+    "prompt": "Organize supplied evidence on a common timeline. Freeze a decisive frame, mark the relevant detail, and match it to a verified quote, map or reading. Distinguish reconstructions visibly.",
+    "createdAt": "2026-11-08T08:46:02Z",
+    "engine": "hyperframes",
+    "version": 1,
+    "palette": [
+      "#232B34",
+      "#C8D2D2",
+      "#6084A2",
+      "#C96D64"
+    ]
+  },
+  {
+    "id": "lemo-opuscar-kino-montage",
+    "name": "Constructivist Montage",
+    "source": "builtin",
+    "sourceUrl": "https://github.com/lemomo-ai/lemo-opuscar/blob/143f387ad774525dc9abc0ff05fb5f4bfbaa5f02/styles/kino-montage/STYLE.md",
+    "notes": {
+      "camera": "Cut sharply along a shared diagonal and land key changes on a mechanical rhythm.",
+      "type": "Large condensed type on diagonals with readable source text."
+    },
+    "prompt": "Build a constructivist montage from diagonal type bands, ink-and-paper textures and strong cutout shapes. Let a single red mark the key event in sourced images or illustrations.",
+    "createdAt": "2026-11-08T08:46:02Z",
+    "engine": "hyperframes",
+    "version": 1,
+    "palette": [
+      "#E6D5B4",
+      "#222427",
+      "#B72E32"
+    ]
+  },
+  {
+    "id": "lemo-opuscar-telestrator",
+    "name": "Sports Telestrator",
+    "source": "builtin",
+    "sourceUrl": "https://github.com/lemomo-ai/lemo-opuscar/blob/143f387ad774525dc9abc0ff05fb5f4bfbaa5f02/styles/telestrator/STYLE.md",
+    "notes": {
+      "camera": "Give every annotation a stable freeze before resuming movement.",
+      "type": "Use short tactical labels and a clear frame or time readout."
+    },
+    "prompt": "Play a supplied sports clip, then freeze or rewind to mark a meaningful movement. Use arrows, rings and zones to show tactics, or build a labeled pitch diagram if footage is unavailable.",
+    "createdAt": "2026-11-08T08:46:02Z",
+    "engine": "hyperframes",
+    "version": 1,
+    "palette": [
+      "#25372F",
+      "#F3F0D8",
+      "#E75750",
+      "#F1CC5E"
+    ]
+  },
+  {
+    "id": "lemo-opuscar-news-package",
+    "name": "Broadcast News Package",
+    "source": "builtin",
+    "sourceUrl": "https://github.com/lemomo-ai/lemo-opuscar/blob/143f387ad774525dc9abc0ff05fb5f4bfbaa5f02/styles/news-package/STYLE.md",
+    "notes": {
+      "camera": "Cut from ident to rundown, then to consistent full-frame graphics for each item.",
+      "type": "Keep the lower-third hierarchy steady across headlines."
+    },
+    "prompt": "Build a newsroom package with a short ident, a persistent lower third and dedicated maps, source cards and number boards. Use verified figures and clearly separate distinct items.",
+    "createdAt": "2026-11-08T08:46:02Z",
+    "engine": "hyperframes",
+    "version": 1,
+    "palette": [
+      "#152D49",
+      "#35689A",
+      "#F2F6F7",
+      "#ED7853"
+    ]
+  },
+  {
+    "id": "lemo-opuscar-memphis-diorama",
+    "name": "Memphis Diorama",
+    "source": "builtin",
+    "sourceUrl": "https://github.com/lemomo-ai/lemo-opuscar/blob/143f387ad774525dc9abc0ff05fb5f4bfbaa5f02/styles/memphis-diorama/STYLE.md",
+    "notes": {
+      "camera": "Use a slow camera that gives the viewer time to scan the diorama.",
+      "type": "Playful rounded display type in quiet space around the frame."
+    },
+    "prompt": "Open an organic frame into a little tabletop world of saturated geometric shapes, ink contours, hard purple shadows and repeating patterns. Animate small ambient details in loops.",
+    "createdAt": "2026-11-08T08:46:02Z",
+    "engine": "remotion",
+    "version": 1,
+    "palette": [
+      "#F4E7D1",
+      "#D463A1",
+      "#6853A5",
+      "#F2C858"
+    ]
+  },
+  {
+    "id": "lemo-opuscar-transit-map",
+    "name": "Transit Map",
+    "source": "builtin",
+    "sourceUrl": "https://github.com/lemomo-ai/lemo-opuscar/blob/143f387ad774525dc9abc0ff05fb5f4bfbaa5f02/styles/transit-map/STYLE.md",
+    "notes": {
+      "camera": "Travel along one route at a time and pull back for the full network.",
+      "type": "Station names follow consistent offsets from dots and route lines."
+    },
+    "prompt": "Draw a metro schematic with octilinear lines, white station dots and black-outlined interchange capsules. Use a moving pen tip to show network growth and establish route colors consistently.",
+    "createdAt": "2026-11-08T08:46:02Z",
+    "engine": "hyperframes",
+    "version": 1,
+    "palette": [
+      "#F4EBDD",
+      "#292A30",
+      "#297E9F",
+      "#D15252"
+    ]
+  },
+  {
+    "id": "lemo-opuscar-chalkboard",
+    "name": "Chalkboard",
+    "source": "builtin",
+    "sourceUrl": "https://github.com/lemomo-ai/lemo-opuscar/blob/143f387ad774525dc9abc0ff05fb5f4bfbaa5f02/styles/chalkboard/STYLE.md",
+    "notes": {
+      "camera": "Use a fixed classroom view with small pushes for a formula or word.",
+      "type": "Chalk handwriting for labels; keep stroke width and spacing readable."
+    },
+    "prompt": "Teach one idea by writing chalk strokes in order on a textured blackboard. Write the initial idea, wipe part of it clean, and use the same space for the corrected explanation.",
+    "createdAt": "2026-11-08T08:46:02Z",
+    "engine": "hyperframes",
+    "version": 1,
+    "palette": [
+      "#283A35",
+      "#EEE9D3",
+      "#E6CC77",
+      "#B4CBC2"
+    ]
+  },
+  {
+    "id": "lemo-opuscar-isometric-picture-book",
+    "name": "Isometric Picture Book",
+    "source": "builtin",
+    "sourceUrl": "https://github.com/lemomo-ai/lemo-opuscar/blob/143f387ad774525dc9abc0ff05fb5f4bfbaa5f02/styles/isometric-picture-book/STYLE.md",
+    "notes": {
+      "camera": "Stay with the same isometric orientation and reveal the next step with a cutaway.",
+      "type": "Serif labels appear on quiet floor areas with high contrast."
+    },
+    "prompt": "Explain an everyday rule through small faceless figures acting in sequence in one flat isometric place. Lift or remove walls when they hide the meaningful action.",
+    "createdAt": "2026-11-08T08:46:02Z",
+    "engine": "hyperframes",
+    "version": 1,
+    "palette": [
+      "#F2E6CF",
+      "#658D8C",
+      "#B9725B",
+      "#D5AE69"
+    ]
+  },
+  {
+    "id": "lemo-opuscar-printed-long-take",
+    "name": "Printed Long Take",
+    "source": "builtin",
+    "sourceUrl": "https://github.com/lemomo-ai/lemo-opuscar/blob/143f387ad774525dc9abc0ff05fb5f4bfbaa5f02/styles/printed-long-take/STYLE.md",
+    "notes": {
+      "camera": "Travel in one smooth continuous camera move without page changes.",
+      "type": "Use spare caption cards or clear paper margins."
+    },
+    "prompt": "Make a continuous 3D journey read as a scratchboard print. Use hatch density to show depth and weather, and reserve one red accent for a recurring subject.",
+    "createdAt": "2026-11-08T08:46:02Z",
+    "engine": "remotion",
+    "version": 1,
+    "palette": [
+      "#EEE2C6",
+      "#212122",
+      "#B93F3F"
+    ]
+  },
+  {
+    "id": "lemo-opuscar-circuit-board",
+    "name": "Circuit Board",
+    "source": "builtin",
+    "sourceUrl": "https://github.com/lemomo-ai/lemo-opuscar/blob/143f387ad774525dc9abc0ff05fb5f4bfbaa5f02/styles/circuit-board/STYLE.md",
+    "notes": {
+      "camera": "Follow one energized trace at a time; pull back to explain branching.",
+      "type": "Use small silkscreen-like labels beside the paths."
+    },
+    "prompt": "Map a system as copper traces, pads and silkscreen labels on dark green solder mask. Show what flows as moving light, then bridge between the system map and a close component view.",
+    "createdAt": "2026-11-08T08:46:02Z",
+    "engine": "hyperframes",
+    "version": 1,
+    "palette": [
+      "#15453A",
+      "#B77A48",
+      "#E4E9D3",
+      "#86D3A1"
+    ]
+  },
+  {
+    "id": "lemo-opuscar-desktop-flythrough",
+    "name": "Desktop Flythrough",
+    "source": "builtin",
+    "sourceUrl": "https://github.com/lemomo-ai/lemo-opuscar/blob/143f387ad774525dc9abc0ff05fb5f4bfbaa5f02/styles/desktop-flythrough/STYLE.md",
+    "notes": {
+      "camera": "Fly in one continuous path between cards, then pull back over the whole desk.",
+      "type": "Keep UI labels readable and match the product's own type hierarchy."
+    },
+    "prompt": "Lay app screens out as printed cards on a sunlit desk. Use voxel-like pixel characters to connect actions from card to card and let each stop demonstrate a meaningful UI change.",
+    "createdAt": "2026-11-08T08:46:02Z",
+    "engine": "remotion",
+    "version": 1,
+    "palette": [
+      "#E8D6BC",
+      "#F5F2E6",
+      "#4D80B8",
+      "#D07A57"
+    ]
+  }
+]

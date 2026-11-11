@@ -453,6 +453,7 @@ const PROTOCOL_VERSION: u64 = 1;
 const SET_MODE_TIMEOUT: Duration = Duration::from_secs(10);
 const CRASH_MESSAGE: &str = "The agent stopped unexpectedly";
 /// How long a stopped agent gets to exit after SIGTERM before SIGKILL.
+#[cfg(unix)]
 const KILL_GRACE: Duration = Duration::from_millis(1500);
 /// The first `npx` run downloads the agent's ACP adapter, which can take minutes.
 const START_TIMEOUT: Duration = Duration::from_secs(300);

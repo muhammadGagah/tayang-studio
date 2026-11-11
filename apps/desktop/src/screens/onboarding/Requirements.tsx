@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { ArrowRight, RefreshCw } from 'lucide-react';
 import { requiredMissing, type SystemInfo, type ToolId, type ToolStatus } from '@tayang/shared';
@@ -25,21 +25,23 @@ export function Requirements() {
   const closing = useInstall((s) => s.closing);
   const refresh = useInstall((s) => s.refresh);
   const start = useInstall((s) => s.start);
-  const askKey = useInstall((s) => s.askKey);
   const [sys, setSys] = useState<SystemInfo | null>(null);
-  const [loaded, setLoaded] = useState(false);
+  const [checking, setChecking] = useState(true);
   const [checkError, setCheckError] = useState<string | null>(null);
+  const checkId = useRef(0);
   const agentId = settings?.defaultAgent ?? 'claude';
   const agentName = AGENT_NAMES[agentId];
 
   const check = useCallback(async () => {
+    const id = ++checkId.current;
+    setChecking(true);
     setCheckError(null);
     try {
       await refresh(agentId);
     } catch (e) {
-      setCheckError(e instanceof Error ? e.message : String(e));
+      if (id === checkId.current) setCheckError(e instanceof Error ? e.message : String(e));
     } finally {
-      setLoaded(true);
+      if (id === checkId.current) setChecking(false);
     }
   }, [refresh, agentId]);
 
@@ -47,27 +49,28 @@ export function Requirements() {
     useInstall.getState().listen();
     getSystemInfo().then(setSys).catch(() => {});
     void check();
+    return () => { checkId.current++; };
   }, [check]);
 
   const sorted = [...statuses].sort((a, b) => TOOL_ORDER.indexOf(a.id) - TOOL_ORDER.indexOf(b.id));
   const required = sorted.filter((t) => t.required);
   const recommended = sorted.filter((t) => !t.required);
   const missing = requiredMissing(statuses);
-  const blocked = !loaded || missing.length > 0;
+  const blocked = checking || !!checkError || missing.length > 0;
 
-  const install = (tool: ToolId, key?: string) => {
+  const install = (tool: ToolId) => {
     if (!sys) return;
-    void start(tool, { sys, agent: agentId, elevenLabsKey: key });
+    void start(tool, { sys, agent: agentId });
   };
 
   // The tools are ready: last comes the optional Tayang sign-in, which finishes onboarding.
   const begin = () => navigate({ name: 'onboarding-account' });
 
-  const group = (title: string, note: string, tools: ToolStatus[]) => (
+  const group = (title: string, note: string, tools: ToolStatus[], announce = false) => (
     <section className="flex flex-col gap-3" key={title}>
-      <span className="text-sm font-medium">
-        {title} <span className="font-normal text-text-3">· {note}</span>
-      </span>
+      <h2 className="text-sm font-medium">
+        {title} <span role={announce ? 'status' : undefined} className="font-normal text-text-3">{note && `· ${note}`}</span>
+      </h2>
       <ul className="m-0 flex list-none flex-col overflow-hidden rounded-xl border border-border bg-card p-0">
         {tools.map((t) => (
           <ToolRow
@@ -76,8 +79,7 @@ export function Requirements() {
             sys={sys}
             agentName={agentName}
             busy={!!active || closing || !sys}
-            onInstall={(key) => install(t.id, key)}
-            onAskKey={() => askKey(t.id)}
+            onInstall={() => install(t.id)}
           />
         ))}
       </ul>
@@ -114,16 +116,22 @@ export function Requirements() {
             variant="secondary"
             className="h-7 gap-1 rounded-sm bg-transparent px-2 text-xs text-[#D9D9D9]"
             disabled={!!active || closing}
-            onClick={() => void check()}
+            aria-disabled={checking || undefined}
+            onClick={() => { if (!checking) void check(); }}
           >
             <RefreshCw size={14} strokeWidth={1.5} aria-hidden="true" />
             {t('onboarding.requirements.checkAgain')}
           </Button>
         </div>
 
-        {checkError && <p role="alert" className="m-0 text-[13px] text-orange-light">{checkError}</p>}
+        <p role="alert" className="m-0 text-[13px] text-orange-light empty:absolute">{checkError}</p>
 
-        {group(t('onboarding.requirements.required'), missing.length ? t('onboarding.requirements.missingCount', { count: missing.length }) : t('onboarding.requirements.allReady'), required)}
+        {group(
+          t('onboarding.requirements.required'),
+          checking ? t('updates.checking') : checkError ? '' : missing.length ? t('onboarding.requirements.missingCount', { count: missing.length }) : t('onboarding.requirements.allReady'),
+          required,
+          true,
+        )}
         {group(t('onboarding.requirements.recommended'), t('onboarding.requirements.addLater'), recommended)}
 
         <div className="mt-2 flex items-center gap-4">

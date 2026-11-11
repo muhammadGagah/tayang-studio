@@ -11,10 +11,10 @@ const root = join(dirname(fileURLToPath(import.meta.url)), '..', 'agent-plugin')
 const read = (p: string) => readFileSync(join(root, p), 'utf8');
 
 function frontmatter(text: string): Record<string, string> {
-  const m = /^---\n([\s\S]*?)\n---\n/.exec(text);
+  const m = /^---\r?\n([\s\S]*?)\r?\n---\r?\n/.exec(text);
   if (!m) throw new Error('no frontmatter');
   return Object.fromEntries(
-    m[1]!.split('\n').map((l) => {
+    m[1]!.split(/\r?\n/).map((l) => {
       const i = l.indexOf(':');
       return [l.slice(0, i).trim(), l.slice(i + 1).trim()];
     }),
@@ -58,8 +58,37 @@ describe('agent plugin', () => {
   it('preamble contains the skill without frontmatter, and no A2UI', () => {
     const p = buildSessionPreamble();
     expect(p).toContain('# Tayang Studio');
+    expect(p).toContain('$TAYANG_AI_URL/sound-effects');
+    expect(p).toContain('audio/sfx/CREDITS.md');
+    expect(p).toContain('Keep credits in this project file by default.');
+    expect(p).toContain('"allowPublicCredit":true');
     expect(p).not.toMatch(/a2ui|createSurface/i);
-    expect(p.startsWith('---')).toBe(false);
+    expect(p).not.toMatch(/^name: tayang-studio\r?$/m);
+  });
+
+  it('gives plugin and preamble agents the same local workflow for Openverse, Real SFX and Earshot', () => {
+    for (const instructions of [read('skills/tayang-studio/SKILL.md'), buildSessionPreamble()]) {
+      expect(instructions).toContain('### Real SFX mixing and Earshot review');
+      expect(instructions).toContain('$TAYANG_AI_URL/sound-effects');
+      expect(instructions).toContain('REAL_SFX_CONFIG');
+      expect(instructions).toContain('mix.py .tayang/sfx-cues.json --out .tayang/<name>-sfx.mp4');
+      expect(instructions).toContain('EARSHOT_OFFLINE=1');
+      expect(instructions).toContain('-m earshot measure');
+      expect(instructions).toContain('before moving the checked MP4 to a fresh filename in `renders/`');
+      expect(instructions).toContain('Keep credits in this project file by default.');
+    }
+  });
+
+  it('teaches Gemini voice selection and supplies valid two-speaker JSON to agents', () => {
+    const preamble = buildSessionPreamble();
+    expect(preamble).toContain('even when Tayang is signed out or has no credits');
+    const example = /Gemini dialogue: send `(\{.*\})` to the same route/.exec(preamble);
+    expect(example).not.toBeNull();
+    const payload = JSON.parse(example![1]!);
+    expect(payload.speakers.map((speaker: { name: string }) => speaker.name)).toEqual(['Ayu', 'Bima']);
+    expect(payload.text.split('\n')).toHaveLength(2);
+    expect(buildAutopilotBuildPrompt('Title', 30, { voiceId: 'some-elevenlabs-id' }))
+      .toContain('omit the ElevenLabs voice id');
   });
 
   it('adds the Indonesian hint only for the id language', () => {

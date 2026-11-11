@@ -1,12 +1,12 @@
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useId, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { open as openDialog } from '@tauri-apps/plugin-dialog';
 import { getCurrentWebview } from '@tauri-apps/api/webview';
-import { ArrowUp, AtSign, Check, ChevronDown, File as FileIcon, Palette, Paperclip, Square, X, Zap } from 'lucide-react';
+import { ArrowUp, AtSign, Check, ChevronDown, File as FileIcon, Loader2, Palette, Paperclip, Square, X, Zap } from 'lucide-react';
 import type { AgentId, AgentInfo, MessagePart, Project, Style } from '@tayang/shared';
 import { AgentLogo } from '@/components/AgentLogo';
 import { FrameChip } from '@/components/MessageList';
-import { filterProjects, filterStyles, MentionMenu, styleKey, videoKey } from '@/components/MentionMenu';
+import { filterProjects, filterStyles, MentionMenu, mentionOptionId, styleKey, videoKey } from '@/components/MentionMenu';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -70,7 +70,7 @@ function FileChip({ part, onRemove }: { part: FilePart; onRemove(): void }) {
   );
 }
 
-const AGENT_ORDER: AgentId[] = ['claude', 'opencode', 'codex', 'gemini'];
+const AGENT_ORDER: AgentId[] = ['claude', 'opencode', 'codex', 'gemini', 'antigravity', 'custom'];
 
 /** Every toolbar control: a 32×32 icon button, same radius and hover. */
 const ICON_BUTTON =
@@ -86,11 +86,12 @@ function Tip({ label, children }: { label: string; children: React.ReactElement 
   );
 }
 
-/** The agent's logo and a small chevron; the name is in the label and tooltip. */
+/** The agent's logo, its name and a small chevron. */
 const AgentFace = ({ agent }: { agent: AgentId }) => (
   <>
     <AgentLogo id={agent} size={16} />
-    <ChevronDown size={12} strokeWidth={1.5} aria-hidden="true" />
+    <span className="max-w-28 truncate text-[12px]">{AGENT_NAMES[agent]}</span>
+    <ChevronDown size={12} strokeWidth={1.5} aria-hidden="true" className="shrink-0" />
   </>
 );
 
@@ -136,10 +137,10 @@ function AgentPicker({
           >
             <AgentLogo id={a.id} size={16} />
             <span className="font-medium">{AGENT_NAMES[a.id]}</span>
-            <span className="ml-auto font-mono text-[11px] text-text-3">
-              {a.installed ? (a.version ?? '') : t('composer.notInstalled')}
-            </span>
-            {a.id === agent && <Check data-testid="agent-check" size={14} strokeWidth={1.5} aria-hidden="true" />}
+            {!a.installed && (
+              <span className="ml-auto text-[11px] text-text-3">{a.id === 'custom' ? t('composer.notSetUp') : t('composer.notInstalled')}</span>
+            )}
+            {a.id === agent && <Check data-testid="agent-check" size={14} strokeWidth={1.5} aria-hidden="true" className="ml-auto" />}
           </DropdownMenuItem>
         ))}
         <DropdownMenuSeparator />
@@ -156,6 +157,9 @@ function AgentPicker({
 
 /** A model value's readable tail when the agent gave no name for it ("opencode/big-pickle" → "big-pickle"). */
 const shortModel = (value: string) => value.split('/').pop() ?? value;
+
+/** A model's name in the picker. Your API has one provider, so its "Provider/" prefix says nothing. */
+const modelName = (agent: AgentId, name: string) => (agent === 'custom' ? shortModel(name) : name);
 
 /**
  * The agent's model: what the chat's session runs on, or the one picked for the agent, else its
@@ -174,7 +178,8 @@ export function ModelPicker({ agent, chatId, disabled }: { agent: AgentId; chatI
   useEffect(() => useModels.getState().listen(), []);
 
   const current = live ?? picked;
-  const label = current ? (options.find((o) => o.value === current)?.name ?? shortModel(current)) : t('composer.modelDefault');
+  const found = current ? options.find((o) => o.value === current) : undefined;
+  const label = current ? (found ? modelName(agent, found.name) : shortModel(current)) : t('composer.modelDefault');
 
   const onOpenChange = (o: boolean) => {
     setOpen(o);
@@ -204,16 +209,34 @@ export function ModelPicker({ agent, chatId, disabled }: { agent: AgentId; chatI
             className={cn(ICON_BUTTON, 'w-auto max-w-44 px-1.5 text-[12px]')}
           >
             <span className="truncate">{label}</span>
-            <ChevronDown size={12} strokeWidth={1.5} aria-hidden="true" className="shrink-0" />
+            {loading ? (
+              <Loader2 size={12} strokeWidth={1.5} aria-hidden="true" className="shrink-0 animate-spin motion-reduce:animate-none" />
+            ) : (
+              <ChevronDown size={12} strokeWidth={1.5} aria-hidden="true" className="shrink-0" />
+            )}
           </button>
         </PopoverTrigger>
       </Tip>
-      <PopoverContent side="top" align="start" className="w-80 border-hairline bg-card p-0">
-        <Command>
+      <PopoverContent aria-label={t('composer.modelLabel', { name: label })} side="top" align="start" className="w-80 border-hairline bg-card p-0">
+        <Command label={t('composer.findModel')}>
           <CommandInput placeholder={t('composer.findModel')} />
+          <div role="status" className="empty:absolute">
+            {loading && (
+              <span className="flex items-center gap-2 px-3 py-2 text-xs text-text-3">
+                <Loader2 size={12} strokeWidth={1.5} aria-hidden="true" className="shrink-0 animate-spin motion-reduce:animate-none" />
+                {options.length ? t('composer.refreshingModels') : t('composer.loadingModels', { agent: AGENT_NAMES[agent] })}
+              </span>
+            )}
+          </div>
           <CommandList className="max-h-72">
             {loading && !options.length ? (
-              <p className="m-0 px-3 py-3 text-xs text-text-3">{t('composer.loadingModels', { agent: AGENT_NAMES[agent] })}</p>
+              <div aria-hidden="true" className="flex flex-col gap-1 px-1 py-1">
+                {[72, 56, 64, 48].map((w) => (
+                  <span key={w} aria-hidden="true" className="flex h-9 items-center px-2">
+                    <span className="h-3 animate-pulse rounded bg-raised motion-reduce:animate-none" style={{ width: `${w}%` }} />
+                  </span>
+                ))}
+              </div>
             ) : (
               <>
                 <CommandEmpty>{t('composer.noModelMatch')}</CommandEmpty>
@@ -230,7 +253,7 @@ export function ModelPicker({ agent, chatId, disabled }: { agent: AgentId; chatI
                     onSelect={() => void choose(o.value)}
                     className="min-h-9 gap-2 text-[13px]"
                   >
-                    <span className="min-w-0 flex-1 truncate">{o.name}</span>
+                    <span className="min-w-0 flex-1 truncate">{modelName(agent, o.name)}</span>
                     {o.value === current && <Check size={14} strokeWidth={1.5} aria-hidden="true" />}
                   </CommandItem>
                 ))}
@@ -300,7 +323,7 @@ export function Composer({
   styles?: Style[];
   /** A line under the style chip, saying what the style does here. */
   styleHint?: string;
-  /** Takes the focus, and takes it back each time the box is enabled again (after a turn). */
+  /** Carries focus into the conversation when the composer is ready. */
   autoFocus?: boolean;
 }) {
   const { t } = useTranslation();
@@ -317,6 +340,11 @@ export function Composer({
   }, [draftKey, text, styleRef]);
   const [dismissed, setDismissed] = useState<string | null>(null);
   const [active, setActive] = useState('');
+  const [pickedMention, setPickedMention] = useState<string | null>(null);
+  const [textareaFocused, setTextareaFocused] = useState(false);
+  const [composing, setComposing] = useState(false);
+  const messageId = useId();
+  const listId = `${messageId}-mentions`;
   const ref = useRef<HTMLTextAreaElement>(null);
   const box = useRef<HTMLDivElement>(null);
   const [dragging, setDragging] = useState(false);
@@ -384,19 +412,31 @@ export function Composer({
       off?.();
     };
   }, []);
+  const wasEnabled = useRef(false);
   useEffect(() => {
-    if (autoFocus && !disabled) ref.current?.focus();
+    if (disabled) return;
+    const focused = document.activeElement;
+    if (autoFocus && (focused === document.body || (!wasEnabled.current && focused === ref.current?.closest('main')))) {
+      ref.current?.focus();
+    }
+    wasEnabled.current = true;
   }, [autoFocus, disabled]);
   const disabledRef = useRef(disabled);
   disabledRef.current = disabled;
 
+  const showMentions = useCallback(() => {
+    setText((draft) => {
+      if (TOKEN.test(draft)) return draft;
+      return draft && !/\s$/.test(draft) ? `${draft} @` : `${draft}@`;
+    });
+    setDismissed(null);
+    setActive('');
+    setPickedMention(null);
+    ref.current?.focus();
+  }, []);
   useEffect(() => {
-    if (mentionSignal > 0) {
-      setText((t) => (t && !/\s$/.test(t) ? `${t} @` : `${t}@`));
-      setDismissed(null);
-      ref.current?.focus();
-    }
-  }, [mentionSignal]);
+    if (mentionSignal > 0) showMentions();
+  }, [mentionSignal, showMentions]);
 
   const mentions = !!projects || !!styles;
   const token = mentions ? TOKEN.exec(text) : null;
@@ -405,17 +445,22 @@ export function Composer({
   const styleMatches = token && styles ? filterStyles(styles, query) : undefined;
   // One list across both groups, in the order the menu shows them.
   const items = [...(videoMatches ?? []).map(videoKey), ...(styleMatches ?? []).map(styleKey)];
-  const open = !!token && dismissed !== text;
+  const open = textareaFocused && !disabled && !composing && !!token && dismissed !== text;
   const current = items.includes(active) ? active : items[0];
+  const listOpen = open && !!current;
 
   const pick = (p: Project) => {
-    onMention?.({ projectId: p.id, title: p.title });
+    if (onMention) {
+      onMention({ projectId: p.id, title: p.title });
+      setPickedMention(p.title);
+    }
     setText((t) => t.replace(TOKEN, '$1'));
     ref.current?.focus();
   };
 
   const pickStyle = (s: Style) => {
     setStyleRef({ styleId: s.id, name: s.name });
+    setPickedMention(s.name);
     setText((t) => t.replace(TOKEN, '$1'));
     ref.current?.focus();
   };
@@ -440,6 +485,7 @@ export function Composer({
     const draftStyle = styleRef;
     setText('');
     setStyleRef(null);
+    setPickedMention(null);
     const giveBack = () => {
       setText((t) => t || draft);
       setStyleRef((s) => s ?? draftStyle);
@@ -455,7 +501,8 @@ export function Composer({
   };
 
   const onKeyDown = (e: React.KeyboardEvent) => {
-    if (open && items.length > 0) {
+    if (composing || e.nativeEvent.isComposing || e.keyCode === 229) return;
+    if (open && !e.shiftKey && !e.altKey && !e.ctrlKey && !e.metaKey && items.length > 0) {
       const i = Math.max(0, items.indexOf(current ?? ''));
       if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
         e.preventDefault();
@@ -498,7 +545,7 @@ export function Composer({
           ))}
         </div>
       )}
-      <Popover open={open}>
+      <Popover open={open} onOpenChange={(next) => { if (!next) setDismissed(text); }}>
         <PopoverAnchor asChild>
           <div
             ref={box}
@@ -559,23 +606,42 @@ export function Composer({
               </div>
             )}
             {styleRef && styleHint && <p className="m-0 -mt-1 text-xs text-text-3">{styleHint}</p>}
-            <label htmlFor="composer-message" className="sr-only">
+            <label htmlFor={messageId} className="sr-only">
               {t('composer.message')}
             </label>
+            <p id={`${messageId}-hint`} className="sr-only">
+              {t('composer.keyboardHint')} {mentions && t('mention.keyboardHint')}
+            </p>
             <Textarea
-              id="composer-message"
+              id={messageId}
               ref={ref}
               rows={2}
               value={text}
               disabled={disabled}
               placeholder={placeholder ?? t('composer.placeholder')}
+              aria-describedby={`${messageId}-hint`}
+              aria-autocomplete={mentions ? 'list' : undefined}
+              aria-haspopup={mentions ? 'listbox' : undefined}
+              aria-controls={mentions ? listId : undefined}
+              aria-activedescendant={listOpen ? mentionOptionId(listId, current) : undefined}
               onChange={(e) => {
                 setText(e.target.value);
                 setActive('');
+                setDismissed(null);
+                setPickedMention(null);
               }}
+              onFocus={() => setTextareaFocused(true)}
+              onBlur={() => setTextareaFocused(false)}
+              onCompositionStart={() => setComposing(true)}
+              onCompositionEnd={() => setComposing(false)}
               onKeyDown={onKeyDown}
               className="min-h-12 resize-none rounded-none border-0 bg-transparent p-0 text-[14px] leading-[1.6] shadow-none focus-visible:border-transparent focus-visible:ring-0 dark:bg-transparent"
             />
+            {/* Keep the autocomplete relationship valid while its popup is closed. */}
+            {mentions && !listOpen && <div id={listId} role="listbox" hidden />}
+            <div role="status" className="sr-only">
+              {open ? (!current && t('mention.noResults')) : pickedMention && t('mention.picked', { name: pickedMention })}
+            </div>
             <TooltipProvider delayDuration={300}>
             <div className="flex items-center gap-1">
               <Tip label={t('composer.attach')}>
@@ -622,12 +688,11 @@ export function Composer({
                   <button
                     type="button"
                     aria-label={t('composer.mention')}
+                    aria-haspopup="listbox"
+                    aria-expanded={listOpen}
+                    aria-controls={listId}
                     disabled={disabled}
-                    onClick={() => {
-                      setText((t) => (t && !/\s$/.test(t) ? `${t} @` : `${t}@`));
-                      setDismissed(null);
-                      ref.current?.focus();
-                    }}
+                    onClick={showMentions}
                     className={ICON_BUTTON}
                   >
                     <AtSign size={16} strokeWidth={1.5} aria-hidden="true" />
@@ -660,17 +725,22 @@ export function Composer({
           </div>
         </PopoverAnchor>
         <PopoverContent
+          role="presentation"
+          tabIndex={undefined}
+          aria-hidden={!open || undefined}
           side="top"
           align="start"
           className="w-[400px] border-hairline bg-card p-2"
           onOpenAutoFocus={(e) => e.preventDefault()}
           onCloseAutoFocus={(e) => e.preventDefault()}
+          onInteractOutside={(e) => { if (e.target === ref.current) e.preventDefault(); }}
         >
           <MentionMenu
+            id={listId}
             projects={videoMatches}
             styles={styleMatches}
             query={query}
-            value={current ?? ''}
+            value={listOpen ? current : ''}
             onValueChange={setActive}
             onPick={pick}
             onPickStyle={pickStyle}

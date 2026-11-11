@@ -74,7 +74,6 @@ const missingFfmpeg = [
   tool('node', 'Node.js', true, true),
   tool('ffmpeg', 'FFmpeg', true, false),
   tool('chrome', 'Chrome', true, true),
-  tool('elevenlabs-mcp', 'ElevenLabs MCP', false, false),
   tool('ytdlp', 'yt-dlp', false, false),
 ];
 
@@ -112,6 +111,20 @@ describe('Requirements', () => {
     render(<Requirements />);
     expect(await screen.findByText(/shows you every command your agent asks to run, and nothing it asks about runs until you allow/)).toBeInTheDocument();
     expect(await screen.findByText('Install FFmpeg to continue')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /Start my first video/ })).toBeDisabled();
+  });
+
+  it('keeps the newer check error when an earlier agent check finishes afterward', async () => {
+    let finishEarlier = (result: ToolStatus[]) => { void result; };
+    vi.mocked(ipc.checkTools)
+      .mockImplementationOnce(() => new Promise((resolve) => { finishEarlier = resolve; }))
+      .mockRejectedValueOnce(new Error('Tool check failed'));
+    render(<Requirements />);
+    await act(async () => useApp.setState({ settings: { ...settings, defaultAgent: 'codex' } }));
+    expect(await screen.findByText('Tool check failed')).toHaveAttribute('role', 'alert');
+    await act(async () => finishEarlier(missingFfmpeg));
+    expect(useInstall.getState().statuses).toEqual([]);
+    expect(screen.getByText('Tool check failed')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /Start my first video/ })).toBeDisabled();
   });
 
@@ -153,6 +166,17 @@ describe('Requirements', () => {
     await user.click(screen.getByRole('button', { name: 'Install Node.js' }));
     expect(openUrl).toHaveBeenCalledWith('https://nodejs.org/en/download');
     expect(ipc.agentStart).not.toHaveBeenCalled();
+  });
+
+  it('an old Node says which version it found and asks for an update', async () => {
+    const user = userEvent.setup();
+    vi.mocked(ipc.checkTools).mockResolvedValue(
+      missingFfmpeg.map((t) => (t.id === 'node' ? { ...tool('node', 'Node.js', true, false), found: true, version: '20.6.1' } : t)),
+    );
+    render(<Requirements />);
+    expect(await screen.findByText('Found Node.js 20.6.1 · Tayang needs 22 or newer. Update it, then press Check again')).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: 'Update Node.js' }));
+    expect(openUrl).toHaveBeenCalledWith('https://nodejs.org/en/download');
   });
 
   it('Chrome on a Mac without Homebrew is installed by the user from google.com/chrome', async () => {
@@ -199,6 +223,21 @@ describe('Requirements', () => {
     expect(screen.queryByRole('button', { name: 'Allow and install' })).not.toBeInTheDocument();
     expect(screen.getByText(/agent crashed/)).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Try again' })).toBeInTheDocument();
+  });
+
+  it('a turn that ends without the tool shows a short error, with the agent reply folded away', async () => {
+    const user = userEvent.setup();
+    render(<Requirements />);
+    await user.click(await screen.findByRole('button', { name: 'Install FFmpeg' }));
+    await waitFor(() => expect(ipc.agentPrompt).toHaveBeenCalled());
+    await emitUpdate({ kind: 'text', text: 'Let me check the metadata in the uv cache. 0.12.2' });
+    await emitUpdate({ kind: 'done', stopReason: 'end_turn' });
+    const alert = await screen.findByText('Tayang still can’t find it on this computer. Try again.');
+    expect(alert).toHaveTextContent('Tayang still can’t find it on this computer. Try again.');
+    expect(alert).not.toHaveTextContent('uv cache');
+    const details = screen.getByText('What Claude Code said').closest('details')!;
+    expect(details).not.toHaveAttribute('open');
+    expect(details).toHaveTextContent('Let me check the metadata in the uv cache. 0.12.2');
   });
 
   it('disables other installs while one runs', async () => {

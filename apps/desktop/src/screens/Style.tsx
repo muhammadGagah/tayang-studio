@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
+import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Link2, Loader2, Pause, Play } from 'lucide-react';
 import type { Style as StyleT, StyleAspect } from '@tayang/shared';
@@ -337,6 +337,7 @@ function Detail({
   const [prompt, setPrompt] = useState(style.prompt);
   const [error, setError] = useState<string | null>(null);
   const builtin = style.source === 'builtin';
+  const contentLanguage = builtin && style.id.startsWith('lemo-opuscar-') ? 'en' : undefined;
   const studyBusy = useStudy((s) => s.phase === 'running' || s.phase === 'finishing');
 
   const reset = () => {
@@ -424,7 +425,7 @@ function Detail({
               <Input aria-label={t('style.nameAria')} value={name} onChange={(e) => setName(e.target.value)} className="h-9" />
             </>
           ) : (
-            <DialogTitle className="text-base leading-normal font-medium">{style.name}</DialogTitle>
+            <DialogTitle lang={contentLanguage} className="text-base leading-normal font-medium">{style.name}</DialogTitle>
           )}
           <DialogDescription className="text-xs text-text-3">{sourceLabel(style)}</DialogDescription>
           {style.engine && <span className="font-mono text-xs text-text-3">{ENGINE_LABEL[style.engine]}</span>}
@@ -451,7 +452,7 @@ function Detail({
               {shownNotes.map((a) => (
                 <div key={a} className="flex gap-3 text-[13px] leading-normal">
                   <dt className="w-[76px] shrink-0 text-text-3">{t(`style.aspects.${a}`)}</dt>
-                  <dd className="m-0 text-[#D9D9D9]">{style.notes[a]}</dd>
+                  <dd lang={contentLanguage} className="m-0 text-[#D9D9D9]">{style.notes[a]}</dd>
                 </div>
               ))}
             </dl>
@@ -512,6 +513,7 @@ function Detail({
           ) : (
             <div
               id="style-prompt"
+              lang={contentLanguage}
               className="rounded-md border border-border bg-background p-3 font-mono text-xs leading-[1.6] whitespace-pre-line text-[#D9D9D9]"
             >
               {style.prompt}
@@ -615,7 +617,7 @@ export function Style() {
   const [syncing, setSyncing] = useState(true);
   const [offline, setOffline] = useState(false);
 
-  // Built-in styles come from the API: refresh them whenever the screen opens.
+  // Refresh the API's styles whenever the screen opens.
   useEffect(() => {
     let alive = true;
     syncStyles()
@@ -642,7 +644,6 @@ export function Style() {
   }, [version, savedVersion]);
 
   const all = stored;
-  const hasBuiltin = useMemo(() => stored.some((s) => s.source === 'builtin'), [stored]);
   const shown = all.filter((s) => tab === 'all' || s.source === tab);
   const current = sel ? all.find((s) => s.id === sel) : undefined;
   const card = useRef<HTMLElement | null>(null);
@@ -651,7 +652,7 @@ export function Style() {
   const [blocked, setBlocked] = useState(false);
   /** The clone that just opened: its popup starts in edit mode. */
   const [editNew, setEditNew] = useState<string | null>(null);
-  /** After a delete, the card to focus once the list has updated (null: the library itself). */
+  /** After cloning or deleting, the card to focus once the list has updated (null: the library itself). */
   const refocus = useRef<{ id: string | null } | null>(null);
   useEffect(() => {
     if (!dirty) setBlocked(false);
@@ -734,17 +735,14 @@ export function Style() {
               ))}
             </TabsList>
           </Tabs>
-          {syncing && (
-            <p role="status" className="m-0 flex items-center gap-2 text-xs text-text-3">
-              <Loader2 size={14} strokeWidth={1.5} aria-hidden="true" className="animate-spin" />
-              {t('style.updating')}
-            </p>
-          )}
-          {!syncing && offline && (
-            <p className="m-0 text-xs text-text-3">
-              {hasBuiltin ? t('style.fromLastSync') : t('style.goOnline')}
-            </p>
-          )}
+          <p role="status" aria-atomic="true" className="m-0 flex items-center gap-2 text-xs text-text-3 empty:absolute">
+            {syncing ? (
+              <>
+                <Loader2 size={14} strokeWidth={1.5} aria-hidden="true" className="animate-spin motion-reduce:animate-none" />
+                {t('style.updating')}
+              </>
+            ) : offline ? t('style.availableOffline') : null}
+          </p>
           {shown.length === 0 && !syncing && <p className="m-0 text-sm text-text-3">{t('style.empty')}</p>}
           <div
             className="grid gap-4"
@@ -810,6 +808,8 @@ export function Style() {
                 setStored((prev) => (prev.some((x) => x.id === clone.id) ? prev : [...prev, clone]));
                 setEditNew(clone.id);
                 setSel(clone.id);
+                refocus.current = { id: clone.id };
+                card.current = null;
                 if (tab === 'builtin' || tab === 'copied') setTab('mine');
                 setVersion((v) => v + 1);
               }}

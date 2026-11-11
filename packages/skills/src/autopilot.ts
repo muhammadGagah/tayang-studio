@@ -91,7 +91,7 @@ export function buildAutopilotBuildPrompt(
   return [
     'This video is made by an autopilot: work through every step on your own, without asking questions or waiting for a reply.',
     ...steps.map((s, i) => `${i + 1}. ${s}`),
-    ...(opts.voiceId ? [`For the voice-over use Tayang's /voice with "voice":"${opts.voiceId}" in every call.`] : []),
+    ...(opts.voiceId ? [`For ElevenLabs voice-over use Tayang's /voice with "voice":"${opts.voiceId}". Only send that voice ID when /usage reports the Tayang voice source. For any ownVoice source, omit the ElevenLabs voice id and let the selected source speak.`] : []),
     FOREGROUND_RULE,
     RENDERS_RULE,
     POST_RULE,

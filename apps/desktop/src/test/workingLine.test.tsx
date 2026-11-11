@@ -29,26 +29,40 @@ describe('the live working line', () => {
     vi.setSystemTime(T0 + 130_000);
     const messages = [user, agent([{ type: 'text', text: 'Pipeline sedang berjalan…' }])];
     const { rerender } = render(<MessageList messages={messages} streaming />);
-    expect(screen.getByRole('status')).toHaveTextContent('Working · 2m 10s');
+    const announcement = screen.getByRole('status');
+    expect(announcement).toHaveTextContent('The agent is working.');
+    expect(screen.getByText('Working · 2m 10s')).toBeInTheDocument();
     act(() => vi.advanceTimersByTime(5000));
-    expect(screen.getByRole('status')).toHaveTextContent('Working · 2m 15s');
+    expect(screen.getByText('Working · 2m 15s')).toBeInTheDocument();
+    expect(announcement).toHaveTextContent(/^The agent is working\.$/);
     useChat.setState({ turnStartedAt: {} });
     rerender(<MessageList messages={messages} streaming={false} />);
-    expect(screen.queryByRole('status')).toBeNull();
-    expect(screen.queryByText(/Working/)).toBeNull();
+    expect(screen.getByRole('status')).toBe(announcement);
+    expect(announcement).toHaveTextContent('The agent’s turn has ended.');
+    expect(screen.queryByText(/Working ·/)).toBeNull();
+  });
+
+  it('announces a permission request in the same live region without moving focus', () => {
+    const { rerender } = render(<MessageList messages={[user]} streaming />);
+    const announcement = screen.getByRole('status');
+    rerender(<MessageList messages={[user]} streaming attention={{ kind: 'permissionPending', requestId: 'p1' }} />);
+    expect(screen.getByRole('status')).toBe(announcement);
+    expect(announcement).toHaveTextContent('The agent needs permission.');
+    expect(document.body).toHaveFocus();
   });
 
   it('reads in Indonesian', () => {
     setUiLanguage('id');
     vi.setSystemTime(T0 + 130_000);
     render(<MessageList messages={[user, agent([{ type: 'text', text: 'Oke' }])]} streaming />);
-    expect(screen.getByRole('status')).toHaveTextContent('Sedang bekerja · 2 mnt 10 dtk');
+    expect(screen.getByText('Sedang bekerja · 2 mnt 10 dtk')).toBeInTheDocument();
+    expect(screen.getByRole('status')).toHaveTextContent('Agen sedang bekerja.');
   });
 
   it('shows before the agent has written anything', () => {
     vi.setSystemTime(T0 + 4000);
     render(<MessageList messages={[user]} streaming />);
-    expect(screen.getByRole('status')).toHaveTextContent('Working · 4s');
+    expect(screen.getByText('Working · 4s')).toBeInTheDocument();
   });
 
   it('is not repeated under a live activity line that shows a running step: that line carries the time', () => {
@@ -58,7 +72,7 @@ describe('the live working line', () => {
       { type: 'tool', toolCallId: 't1', title: 'Run npm install', status: 'running', toolKind: 'execute' },
     ];
     render(<MessageList messages={[user, agent(parts)]} streaming />);
-    expect(screen.queryByRole('status')).toBeNull();
+    expect(screen.queryByText(/Working ·/)).toBeNull();
     expect(screen.getByRole('button', { name: 'Ran 1 command' })).toBeInTheDocument();
     expect(screen.getByTestId('activity-running')).toHaveTextContent(/Run\s*npm install · 1m 1s/);
   });
@@ -66,7 +80,7 @@ describe('the live working line', () => {
   it('a finished step at the tail still gets the working line', () => {
     const parts: MessagePart[] = [{ type: 'tool', toolCallId: 't1', title: 'Run ls', status: 'done', toolKind: 'execute' }];
     render(<MessageList messages={[user, agent(parts)]} streaming />);
-    expect(screen.getByRole('status')).toHaveTextContent('Working · 0s');
+    expect(screen.getByText('Working · 0s')).toBeInTheDocument();
   });
 
   it('reads "Rendering video" with the render\'s own time while the render runs', () => {
@@ -85,7 +99,7 @@ describe('the live working line', () => {
     vi.setSystemTime(T0 + 80_000);
     useRender.setState({ runs: { p1: { startedAt: T0, source: 'agent', chatId: 'c1', toolCallId: 't1' } } });
     render(<MessageList messages={[user, agent([{ type: 'text', text: 'Render…' }])]} streaming />);
-    expect(screen.getByRole('status')).toHaveTextContent('Sedang merender video · 1 mnt 20 dtk');
+    expect(screen.getByText('Sedang merender video · 1 mnt 20 dtk')).toBeInTheDocument();
   });
 
   it('says why after two minutes without a word from the agent', () => {

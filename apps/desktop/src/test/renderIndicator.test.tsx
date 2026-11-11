@@ -19,7 +19,7 @@ vi.mock('@/lib/events', () => ({
   onQuestion: vi.fn(async () => () => {}),
   onAgentAction: vi.fn(async () => () => {}), onAgentUpdate: vi.fn(async () => () => {}), onPermission: vi.fn(async () => () => {}) }));
 
-import { listProjects, mediaLatestRender, mediaRender, setProjectStatus } from '@/lib/ipc';
+import { listProjects, mediaLatestRender, mediaProbe, mediaRender, setProjectStatus } from '@/lib/ipc';
 import { Preview } from '@/screens/preview/Preview';
 import { Videos } from '@/screens/Videos';
 import { setUiLanguage } from '@/i18n';
@@ -40,36 +40,45 @@ describe('Preview while a render runs', () => {
   it('shows the banner with the time, then loads the new render when it ends', async () => {
     render(<Preview projectId="p1" chatId="c1" />);
     await screen.findByText('Nothing rendered yet');
-    expect(screen.queryByRole('status')).toBeNull();
+    const status = screen.getByRole('status');
+    expect(status).toBeEmptyDOMElement();
     const loads = () => vi.mocked(mediaLatestRender).mock.calls.length;
     const before = loads();
     act(() => useRender.getState().start('p1', { source: 'agent', chatId: 'c1', toolCallId: 't1', startedAt: Date.now() - 80_000 }));
-    expect(screen.getByRole('status')).toHaveTextContent('Rendering video… 1m 20s');
-    expect(screen.getByRole('status')).toHaveTextContent("The preview updates when it's done");
+    expect(screen.getByRole('status')).toBe(status);
+    expect(status).toHaveTextContent("Rendering… The preview updates when it's done");
+    expect(status).not.toContainElement(screen.getByText('Rendering video… 1m 20s'));
     // Renders of other projects are not this one's.
     act(() => useRender.getState().start('p2', { source: 'agent' }));
     expect(screen.getAllByRole('status')).toHaveLength(1);
     act(() => useRender.getState().end('p1'));
     await waitFor(() => expect(loads()).toBe(before + 1));
-    expect(screen.queryByRole('status')).toBeNull();
+    expect(status).toBeEmptyDOMElement();
   });
 
   it('reads in Indonesian', async () => {
     setUiLanguage('id');
     useRender.getState().start('p1', { source: 'tayang', startedAt: Date.now() - 80_000 });
     render(<Preview projectId="p1" chatId="c1" />);
-    expect(await screen.findByRole('status')).toHaveTextContent('Sedang merender video… 1 mnt 20 dtk');
-    expect(screen.getByRole('status')).toHaveTextContent('Pratinjau diperbarui setelah selesai');
+    const status = await screen.findByRole('status');
+    expect(status).toHaveTextContent('Pratinjau diperbarui setelah selesai');
+    expect(status).not.toContainElement(screen.getByText('Sedang merender video… 1 mnt 20 dtk'));
   });
 
   it("Tayang's own Render button counts as a render while it runs", async () => {
     let done!: () => void;
     vi.mocked(mediaRender).mockReturnValue(new Promise((r) => (done = () => r('/w/p1/renders/a.mp4'))));
     render(<Preview projectId="p1" chatId="c1" />);
-    await userEvent.click(await screen.findByRole('button', { name: 'Render preview' }));
+    const button = await screen.findByRole('button', { name: 'Render preview' });
+    await userEvent.click(button);
     expect(useRender.getState().runs.p1).toMatchObject({ source: 'tayang' });
-    expect(screen.getByRole('status')).toHaveTextContent('Rendering video…');
+    expect(screen.getByRole('status')).toHaveTextContent('Rendering…');
+    expect(button).toHaveFocus();
+    expect(button).toHaveAttribute('aria-disabled', 'true');
+    vi.mocked(mediaLatestRender).mockResolvedValueOnce('/w/p1/renders/a.mp4');
+    vi.mocked(mediaProbe).mockResolvedValueOnce({ durationSec: 1, fps: 30, frames: 30, width: 1080, height: 1920 });
     await act(async () => done());
+    expect(await screen.findByRole('button', { name: 'Play' })).toHaveFocus();
     expect(useRender.getState().runs.p1).toBeUndefined();
     expect(setProjectStatus).toHaveBeenCalledWith('p1', 'rendered');
   });

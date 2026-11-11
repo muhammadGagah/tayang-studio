@@ -1,4 +1,4 @@
-export type AgentId = 'claude' | 'opencode' | 'gemini' | 'codex' | 'custom';
+export type AgentId = 'claude' | 'opencode' | 'gemini' | 'codex' | 'antigravity' | 'custom';
 
 export interface AgentInfo {
   id: AgentId;
@@ -18,7 +18,7 @@ export interface SystemInfo {
   packageManager: PackageManager | null;
 }
 
-export type ToolId = 'node' | 'ffmpeg' | 'chrome' | 'ytdlp' | 'elevenlabs-mcp';
+export type ToolId = 'node' | 'ffmpeg' | 'chrome' | 'ytdlp';
 
 export interface ToolStatus {
   id: ToolId;
@@ -262,6 +262,8 @@ export interface Settings {
   installId: string;
   /** Sends the anonymous daily install ping. */
   shareInstallStats: boolean;
+  /** Allow agents to send sound search terms to Openverse. */
+  openverseSoundEffects?: boolean;
   /** RFC 3339 time of the last successful ping. */
   lastPingAt: string | null;
   /** Chats start in auto mode: the agent runs commands without asking. Style studies always do. */
@@ -278,6 +280,56 @@ export interface Settings {
   projectStatusChecked: boolean;
   /** The model picked for each agent (agent id → the agent's own model value); missing: its default. */
   agentModels: Partial<Record<AgentId, string>>;
+  /** "Your API" (the `custom` agent): provider preset, address and model. The key stays in the keychain. */
+  apiProvider?: ApiProvider | null;
+  /** Where voice-overs come from; missing: Tayang credits. API keys stay in the keychain. */
+  voiceSource?: VoiceSource;
+}
+
+/** Tayang credits, the user's own ElevenLabs or Fish Audio key, or VoiceStudio running on this computer. */
+export type VoiceSource = 'tayang' | 'elevenlabs' | 'fishaudio' | 'voicestudio' | 'gemini';
+
+/** The voice sources that speak with the user's own API key. */
+export type VoiceKeySource = 'elevenlabs' | 'fishaudio';
+
+/** Why the user's own voice can't speak (the desktop's `VoiceError` codes). */
+export type VoiceErrorCode = 'no-key' | 'bad-key' | 'no-balance' | 'not-running' | 'too-long' | 'busy' | 'failed';
+
+/**
+ * The answer of trying a voice source. `hasCredit`: the account has credit left (null when the key
+ * can't read it); Fish Audio without credit speaks with its free model.
+ */
+export interface VoiceCheck {
+  ok: boolean;
+  error: VoiceErrorCode | null;
+  hasCredit: boolean | null;
+}
+
+export interface VoiceStatus {
+  hasElevenKey: boolean;
+  hasFishKey: boolean;
+}
+
+/** A provider preset: `other` is any OpenAI-compatible address the user types. */
+export type ApiProviderId = 'deepseek' | '9router' | 'commandcode' | 'other';
+
+export interface ApiProvider {
+  provider: ApiProviderId;
+  baseUrl: string;
+  model: string;
+  /** Every model the key can use, offered in the chat's model menu. */
+  models?: string[];
+}
+
+/** Why checking an API key failed. */
+export type ApiFailure = 'unauthorized' | 'noBalance' | 'upgradeRequired' | 'unreachable' | 'notFound' | 'other';
+
+/** The answer of `api_check`: the models the key can use, or why it can't. */
+export interface ApiCheck {
+  ok: boolean;
+  models: string[];
+  failure: ApiFailure | null;
+  detail: string | null;
 }
 
 /** Defaults; workingFolder is `<home>/Tayang`, resolved at runtime. */
@@ -291,6 +343,7 @@ export const DEFAULT_SETTINGS: Omit<Settings, 'workingFolder'> = {
   apiUrl: 'https://studio.tayang.app/api',
   installId: '',
   shareInstallStats: true,
+  openverseSoundEffects: false,
   lastPingAt: null,
   autoMode: false,
   uiLanguage: null,

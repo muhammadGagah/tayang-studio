@@ -48,7 +48,13 @@ impl HttpFetcher {
 
 impl Fetcher for HttpFetcher {
     async fn get(&self, url: &str, max_bytes: u64) -> Result<Fetched, String> {
-        let mut res = self.client.get(url).send().await.map_err(|e| e.to_string())?;
+        let res = self.client.get(url).send().await.map_err(|e| e.to_string())?;
+        Fetched::read(res, max_bytes).await
+    }
+}
+
+impl Fetched {
+    pub async fn read(mut res: reqwest::Response, max_bytes: u64) -> Result<Self, String> {
         let status = res.status().as_u16();
         if res.content_length().is_some_and(|l| l > max_bytes) {
             return Err("The response is too large".into());
@@ -60,7 +66,7 @@ impl Fetcher for HttpFetcher {
             }
             body.extend_from_slice(&chunk);
         }
-        Ok(Fetched { status, body })
+        Ok(Self { status, body })
     }
 }
 

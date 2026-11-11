@@ -127,8 +127,8 @@ describe('Indonesian interface', () => {
   it('switches the language in Settings at once, and saves it', async () => {
     render(<SettingsScreen />);
     expect(screen.getByRole('heading', { level: 1, name: 'Settings' })).toBeInTheDocument();
-    const group = screen.getByRole('tablist', { name: 'Language' });
-    await userEvent.click(within(group).getByRole('tab', { name: 'Bahasa Indonesia' }));
+    const group = screen.getByRole('radiogroup', { name: 'Language' });
+    await userEvent.click(within(group).getByRole('radio', { name: 'Bahasa Indonesia' }));
     expect(await screen.findByRole('heading', { level: 1, name: 'Pengaturan' })).toBeInTheDocument();
     expect(updateSettings).toHaveBeenCalledWith({ uiLanguage: 'id' });
     expect(useApp.getState().settings?.uiLanguage).toBe('id');
@@ -136,7 +136,7 @@ describe('Indonesian interface', () => {
     // The section names follow too.
     expect(screen.getByRole('tab', { name: 'Default video' })).toBeInTheDocument();
     // and back, with no restart
-    await userEvent.click(within(screen.getByRole('tablist', { name: 'Bahasa' })).getByRole('tab', { name: 'English' }));
+    await userEvent.click(within(screen.getByRole('radiogroup', { name: 'Bahasa' })).getByRole('radio', { name: 'English' }));
     expect(await screen.findByRole('heading', { level: 1, name: 'Settings' })).toBeInTheDocument();
     expect(document.documentElement.lang).toBe('en');
   });
@@ -144,7 +144,7 @@ describe('Indonesian interface', () => {
   it('keeps the new language when saving fails', async () => {
     vi.mocked(updateSettings).mockRejectedValue(new Error('disk full'));
     render(<SettingsScreen />);
-    await userEvent.click(within(screen.getByRole('tablist', { name: 'Language' })).getByRole('tab', { name: 'Bahasa Indonesia' }));
+    await userEvent.click(within(screen.getByRole('radiogroup', { name: 'Language' })).getByRole('radio', { name: 'Bahasa Indonesia' }));
     expect(await screen.findByRole('heading', { level: 1, name: 'Pengaturan' })).toBeInTheDocument();
   });
 
@@ -152,11 +152,11 @@ describe('Indonesian interface', () => {
     useApp.setState({ route: { name: 'welcome' } });
     render(<Welcome />);
     expect(screen.getByRole('button', { name: 'Get started' })).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'EN' })).toHaveAttribute('aria-pressed', 'true');
-    await userEvent.click(screen.getByRole('button', { name: 'ID' }));
+    expect(screen.getByRole('button', { name: 'EN · English' })).toHaveAttribute('aria-pressed', 'true');
+    await userEvent.click(screen.getByRole('button', { name: 'ID · Bahasa Indonesia' }));
     expect(await screen.findByRole('button', { name: 'Mulai' })).toBeInTheDocument();
     expect(screen.getByRole('heading', { level: 1 })).toHaveTextContent('Video motion graphic,tanpa pusing nulis prompt.');
-    expect(screen.getByRole('button', { name: 'ID' })).toHaveAttribute('aria-pressed', 'true');
+    expect(screen.getByRole('button', { name: 'ID · Bahasa Indonesia' })).toHaveAttribute('aria-pressed', 'true');
     expect(updateSettings).toHaveBeenCalledWith({ uiLanguage: 'id' });
     expect(document.documentElement.lang).toBe('id');
   });
@@ -227,10 +227,10 @@ it('re-renders without a restart', async () => {
 
 describe('tool names and details', () => {
   it('are said by tool id, and unknown ones pass through', () => {
-    const tool = { id: 'elevenlabs-mcp', name: 'ElevenLabs voice', detail: 'Adds a natural voice to your videos' } as const;
-    expect(toolName(tool)).toBe('ElevenLabs voice');
+    const tool = { id: 'chrome', name: 'Chrome browser', detail: 'Draws each frame of your video' } as const;
+    expect(toolName(tool)).toBe('Google Chrome');
     setUiLanguage('id');
-    expect(toolName(tool)).toBe('Suara ElevenLabs');
+    expect(toolName(tool)).toBe('Google Chrome');
     expect(toolDetail({ id: 'chrome', detail: 'Draws each frame of your video' })).toBe('Menggambar setiap frame sebelum di-encode');
     const unknown = { id: 'newtool', name: 'New tool', detail: 'Does a thing' } as unknown as typeof tool;
     expect(toolName(unknown)).toBe('New tool');
@@ -246,7 +246,6 @@ describe('tool names and details', () => {
         agentName="Claude Code"
         busy={false}
         onInstall={() => {}}
-        onAskKey={() => {}}
       />,
     );
     expect(screen.getByText('Menggambar setiap frame sebelum di-encode')).toBeInTheDocument();

@@ -33,19 +33,20 @@ export function NoPreview({
   'data-testid'?: string;
   children?: ReactNode;
 }) {
+  const colors = swatchId ? swatch(swatchId) : undefined;
   return (
     <div
       data-testid={testId}
       className={cn(
         'flex aspect-[9/16] w-full flex-col items-center justify-center gap-2 rounded-md border border-[#333]',
-        !swatchId && 'bg-ink',
+        !colors && 'bg-ink text-text-3',
         className,
       )}
-      style={swatchId ? { background: swatch(swatchId)[0] } : undefined}
+      style={colors ? { background: colors[0], color: colors[1] } : undefined}
       aria-hidden={children ? undefined : 'true'}
     >
-      <Film size={24} strokeWidth={1.5} aria-hidden="true" className="text-text-3" />
-      {children && <span className="inline-flex items-center gap-1.5 text-xs text-text-3">{children}</span>}
+      <Film size={24} strokeWidth={1.5} aria-hidden="true" />
+      {children && <span className="inline-flex items-center gap-1.5 text-xs">{children}</span>}
     </div>
   );
 }

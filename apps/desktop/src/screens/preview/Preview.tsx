@@ -29,7 +29,7 @@ function RenderBanner({ since }: { since: number }) {
   const { t } = useTranslation();
   const time = useElapsed(since);
   return (
-    <div role="status" className="flex w-full flex-col gap-0.5 rounded-md border border-border bg-card px-3 py-2 text-left">
+    <div className="flex w-full flex-col gap-0.5 rounded-md border border-border bg-card px-3 py-2 text-left">
       <span className="inline-flex items-center gap-2 text-[13px] text-foreground">
         <span aria-hidden="true" className="tayang-pulse inline-block size-1.5 shrink-0 rounded-full bg-primary" />
         {t('preview.renderingFor', { time: time ?? '' })}
@@ -79,6 +79,13 @@ export function Preview({
   const [error, setError] = useState<string | null>(null);
   const [sending, setSending] = useState(false);
   const videoRef = useRef<HTMLVideoElement>(null);
+  const renderButtonRef = useRef<HTMLButtonElement>(null);
+  const restorePlayFocus = useRef(false);
+  const playButtonRef = useCallback((button: HTMLButtonElement | null) => {
+    if (!button || !restorePlayFocus.current) return;
+    restorePlayFocus.current = false;
+    if (document.activeElement === document.body) button.focus();
+  }, []);
 
   // The stage's content size, measured: the frame box is sized from it in px on every platform.
   const [stage, setStage] = useState<{ width: number; height: number } | null>(null);
@@ -101,6 +108,7 @@ export function Preview({
 
   const load = useCallback(async () => {
     const [path, probe] = await Promise.all([mediaLatestRender(projectId), mediaProbe(projectId)]);
+    if (path && probe && renderButtonRef.current === document.activeElement) restorePlayFocus.current = true;
     setVideoPath(path);
     setInfo(probe);
     setFrame(0);
@@ -142,13 +150,27 @@ export function Preview({
   };
 
   const busy = rendering || renderingProp || !!run;
+  const renderStatus = (
+    <div role="status" className="sr-only">
+      {busy ? `${t('preview.rendering')} ${t('preview.renderingHint')}` : ''}
+    </div>
+  );
   if (!videoPath || !info) {
     return (
       <div className="flex h-full flex-col items-center justify-center gap-4 bg-[#101010] px-5 text-center">
+        {renderStatus}
         {run && <RenderBanner since={run.startedAt} />}
         <Oyen mood={busy ? 'sleepy' : 'default'} size={56} />
-        <span className="text-[13px] text-text-2">{busy ? t('preview.rendering') : t('preview.nothing')}</span>
-        {!busy && <Button variant="secondary" onClick={() => void render()}>{t('preview.renderPreview')}</Button>}
+        <span aria-hidden={busy || undefined} className="text-[13px] text-text-2">{busy ? t('preview.rendering') : t('preview.nothing')}</span>
+        <Button
+          ref={renderButtonRef}
+          variant="secondary"
+          aria-disabled={busy || undefined}
+          className="aria-disabled:cursor-default aria-disabled:opacity-50"
+          onClick={() => { if (!busy) void render(); }}
+        >
+          {t('preview.renderPreview')}
+        </Button>
         {error && (
           <p role="alert" className="text-xs text-[#FFB08F]">
             {error}
@@ -210,6 +232,7 @@ export function Preview({
       onKeyDown={onPanelKeyDown}
       className="@container flex h-full flex-col overflow-y-auto bg-[#101010]"
     >
+      {renderStatus}
       {run && (
         <div className="shrink-0 px-4 pt-4">
           <RenderBanner since={run.startedAt} />
@@ -253,6 +276,7 @@ export function Preview({
       <div data-testid="preview-controls" className="flex shrink-0 flex-col gap-3 px-4 pb-4 pt-3">
         <div data-testid="transport" className="flex flex-nowrap items-center gap-1 whitespace-nowrap">
           <Button
+            ref={playButtonRef}
             variant="secondary"
             size="icon"
             aria-label={playing ? t('preview.pause') : t('preview.play')}
@@ -303,9 +327,9 @@ export function Preview({
           <Button
             variant="secondary"
             aria-label={t('preview.sendFrame')}
-            disabled={sending}
-            onClick={() => void sendFrame()}
-            className="h-8 w-full min-w-0 gap-1.5 whitespace-nowrap px-2 text-[13px]"
+            aria-disabled={sending || undefined}
+            onClick={() => { if (!sending) void sendFrame(); }}
+            className="h-8 w-full min-w-0 gap-1.5 whitespace-nowrap px-2 text-[13px] aria-disabled:cursor-default aria-disabled:opacity-50"
           >
             <SquarePlus size={16} strokeWidth={1.5} aria-hidden="true" />
             <span className="hidden @min-[380px]:inline">{t('preview.sendFrame')}</span>
@@ -318,7 +342,7 @@ export function Preview({
           </p>
         )}
 
-        <p data-testid="key-hints" className="m-0 hidden items-center gap-1 text-[11px] leading-4 text-text-3 @min-[296px]:flex">
+        <p data-testid="key-hints" aria-hidden="true" className="m-0 hidden items-center gap-1 text-[11px] leading-4 text-text-3 @min-[296px]:flex">
           <Kbd>←</Kbd> <Kbd>→</Kbd> <span>{t('preview.keysFrame')}</span> <span aria-hidden="true">·</span>{' '}
           <span className="inline-flex items-center gap-0.5">
             <Kbd>Shift</Kbd>+<Kbd>←</Kbd> <Kbd>→</Kbd>

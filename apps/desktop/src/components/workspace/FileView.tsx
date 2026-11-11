@@ -68,7 +68,7 @@ export function FileView({ projectId, path, reloadKey }: { projectId: string; pa
           </button>
         )}
       </div>
-      <div className="min-h-0 flex-1 overflow-auto">
+      <div role="region" aria-label={path} tabIndex={0} className="min-h-0 flex-1 overflow-auto">
         {error ? (
           <p role="alert" className="m-0 p-4 text-xs text-orange-light">
             {error}
@@ -103,7 +103,7 @@ export function FileView({ projectId, path, reloadKey }: { projectId: string; pa
           </div>
         ) : file.kind === 'video' ? (
           <div className="flex min-h-full items-center justify-center p-4">
-            <video src={assetUrl(file.absPath)} controls playsInline className="max-h-full max-w-full rounded-md bg-black" />
+            <video src={assetUrl(file.absPath)} controls playsInline aria-label={name} className="max-h-full max-w-full rounded-md bg-black" />
           </div>
         ) : file.kind === 'audio' ? (
           <div className="flex min-h-full items-center justify-center p-4">

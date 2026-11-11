@@ -306,6 +306,7 @@ export function MessageList({
   onA2uiAction,
   sendOptions,
   busy = false,
+  attention,
   scrollRef,
 }: {
   /** The scroll container the list lives in: it follows new messages only while the user is near the bottom. */
@@ -314,6 +315,7 @@ export function MessageList({
   streaming: boolean;
   /** The screen is busy with an earlier action (setting up a topic): surfaces wait, like while streaming. */
   busy?: boolean;
+  attention?: { kind: 'questionPending' | 'permissionPending'; requestId: string };
   /** Return true when the screen handled the action itself. */
   onA2uiAction?: (a: A2uiAction) => boolean;
   /** How an answered surface is sent: the same options as the screen's composer. */
@@ -414,13 +416,23 @@ export function MessageList({
   const startedAt = useChat((s) => (chatId ? s.turnStartedAt[chatId] : undefined));
   const render = useRender((s) => (chatId ? Object.values(s.runs).find((r) => r.chatId === chatId) : undefined));
   const turn = useMemo<LiveTurn>(() => ({ startedAt, render }), [startedAt, render]);
+  const wasStreaming = useRef(false);
+  const [turnStatus, setTurnStatus] = useState<'agentWorking' | 'agentTurnEnded' | null>(null);
+  useEffect(() => {
+    setTurnStatus(streaming ? 'agentWorking' : wasStreaming.current ? 'agentTurnEnded' : null);
+    wasStreaming.current = streaming;
+  }, [streaming]);
   return (
     <ActionsContext.Provider value={actions}>
-    <div ref={log} className="flex flex-col gap-6" role="log" aria-label={t('chat.conversation')}>
+    <div role="status" className="sr-only">
+      {attention ? <span key={attention.requestId}>{t(`chat.${attention.kind}`)}</span> : turnStatus ? t(`chat.${turnStatus}`) : null}
+    </div>
+    {/* Streaming text and elapsed timers stay readable without interrupting the turn announcements. */}
+    <div ref={log} className="flex flex-col gap-6">
       {messages.map((m, i) => {
         if (m.role === 'user') {
           return (
-            <div key={messageKey(m)} data-turn={i} className="flex justify-end">
+            <article key={messageKey(m)} data-turn={i} tabIndex={-1} aria-label={t('chat.messageYou')} className="flex justify-end">
               <div className="flex max-w-[80%] flex-wrap items-center gap-2 rounded-lg bg-raised px-3 py-2 text-[14px] leading-[1.6]">
                 {m.parts.map((p, j) =>
                   p.type === 'text' ? (
@@ -438,13 +450,13 @@ export function MessageList({
                   ) : null,
                 )}
               </div>
-            </div>
+            </article>
           );
         }
         if (m.role === 'system') {
           return (
-            <div key={messageKey(m)} className="flex items-start gap-3">
-              <Oyen mood="surprised" size={28} />
+            <article key={messageKey(m)} aria-label={t('chat.messageSystem')} className="flex items-start gap-3">
+              <Oyen mood="surprised" size={28} decorative />
               <SystemNote text={localized(m.parts.map((p) => (p.type === 'text' ? p.text : '')).join(''))} />
               {m.parts.some(isScheduleRecord) && (
                 <button
@@ -456,7 +468,7 @@ export function MessageList({
                   {t('schedule.agent.openCalendar')}
                 </button>
               )}
-            </div>
+            </article>
           );
         }
         const working = streaming && i === messages.length - 1;
@@ -472,17 +484,17 @@ export function MessageList({
           return null;
         }
         return (
-          <div key={messageKey(m)} data-testid="agent-message" className="flex items-start gap-3">
-            <Oyen mood={working ? 'sleepy' : 'default'} size={28} />
+          <article key={messageKey(m)} data-testid="agent-message" aria-label={t('chat.messageAgent')} className="flex items-start gap-3">
+            <Oyen mood={working ? 'sleepy' : 'default'} size={28} decorative />
             <div className="flex min-w-0 flex-1 flex-col gap-3">
               <Parts parts={m.parts} live={working} messageId={m.id} a2ui={a2ui} turn={working ? turn : undefined} />
             </div>
-          </div>
+          </article>
         );
       })}
       {streaming && (!last || last.role !== 'agent') && (
         <div className="flex items-start gap-3">
-          <Oyen mood="sleepy" size={28} />
+          <Oyen mood="sleepy" size={28} decorative />
           <div className="pt-1">
             <WorkingLine turn={turn} silent />
           </div>

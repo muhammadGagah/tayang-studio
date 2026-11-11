@@ -4,7 +4,7 @@ import banner from '@/assets/brand/dither-banner.png';
 import wink from '@/assets/brand/oyen-expr-wink.svg';
 import { Button } from '@/components/Button';
 import { OnboardingHeader } from '@/components/OnboardingHeader';
-import { LANGUAGES, uiLanguage } from '@/i18n';
+import { LANGUAGES, LANGUAGE_NAMES, uiLanguage } from '@/i18n';
 import { chooseLanguage } from '@/lib/language';
 import { cn } from '@/lib/utils';
 import { useApp } from '@/state/app';
@@ -53,6 +53,8 @@ export function Welcome() {
           <button
             key={l}
             type="button"
+            lang={l}
+            aria-label={`${l.toUpperCase()} · ${LANGUAGE_NAMES[l]}`}
             aria-pressed={lang === l}
             onClick={() => void chooseLanguage(l)}
             className={cn(

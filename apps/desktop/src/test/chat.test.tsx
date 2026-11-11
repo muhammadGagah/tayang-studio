@@ -290,7 +290,7 @@ describe('ChatNew template style', () => {
     let finish: (v: { installed: boolean }) => void = () => {};
     vi.mocked(ipc.installStyleTemplate).mockReturnValue(new Promise((r) => (finish = r)));
     await pick();
-    expect(await screen.findByRole('status')).toHaveTextContent('Setting up the Atlas journey template…');
+    expect(await screen.findByText('Setting up the Atlas journey template…')).toHaveAttribute('role', 'status');
     expect(screen.getByRole('button', { name: /Ide satu/ })).toBeDisabled();
     expect(screen.getByRole('textbox', { name: 'Message' })).toBeDisabled();
     await act(async () => finish({ installed: true }));
@@ -412,7 +412,7 @@ describe('ChatNew template chip and fallbacks', () => {
 describe('ChatProject', () => {
   it('renders the step bar and the preview slot', async () => {
     render(<ChatProject chatId="c1" />);
-    expect(await screen.findByText('Kenapa rupiah melemah?', { selector: 'span' })).toBeInTheDocument();
+    expect(await screen.findByRole('heading', { name: 'Kenapa rupiah melemah?', level: 1 })).toBeInTheDocument();
     expect(screen.getByRole('list', { name: 'Progress' })).toBeInTheDocument();
     expect(await screen.findByText('Nothing rendered yet')).toBeInTheDocument();
   });
@@ -593,17 +593,16 @@ describe('ChatProject', () => {
     expect(screen.getByRole('button', { name: 'Auto' })).toHaveAttribute('aria-pressed', 'true');
   });
 
-  it('the composer toolbar is icon-only, 32px buttons with labels and tooltips', async () => {
+  it('the composer toolbar is icon-only, 32px buttons with labels and tooltips; the agent also shows its name', async () => {
     const user = userEvent.setup();
     render(<ChatRoute />);
     const agent = await screen.findByRole('button', { name: 'Agent: Claude Code' });
     const auto = screen.getByRole('button', { name: 'Auto' });
     const mention = screen.getByRole('button', { name: '@ Mention a video' });
     const attach = screen.getByRole('button', { name: 'Attach files' });
-    for (const b of [agent, auto, mention, attach]) {
-      expect(b).toHaveClass('size-8');
-      expect(b.textContent).toBe('');
-    }
+    for (const b of [agent, auto, mention, attach]) expect(b).toHaveClass('size-8');
+    for (const b of [auto, mention, attach]) expect(b.textContent).toBe('');
+    expect(agent.textContent).toBe('Claude Code');
     expect(auto).toHaveAttribute('aria-pressed', 'false');
     await user.click(auto);
     expect(auto).toHaveAttribute('aria-pressed', 'true');
@@ -634,7 +633,7 @@ describe('ChatProject', () => {
     const user = userEvent.setup();
     vi.mocked(ipc.getChat).mockResolvedValue({ ...chat('c1', 'p1'), agentId: 'gemini' });
     render(<ChatProject chatId="c1" />);
-    await screen.findByText('Kenapa rupiah melemah?', { selector: 'span' });
+    await screen.findByRole('heading', { name: 'Kenapa rupiah melemah?', level: 1 });
     expect(screen.getByRole('button', { name: 'Agent: Gemini CLI' })).toBeInTheDocument();
     await user.type(screen.getByRole('textbox', { name: 'Message' }), 'go');
     await user.click(screen.getByRole('button', { name: 'Send' }));
@@ -645,7 +644,7 @@ describe('ChatProject', () => {
     const user = userEvent.setup();
     vi.mocked(ipc.getChat).mockResolvedValue({ ...chat('c1', 'p1'), agentId: 'gemini' });
     render(<ChatProject chatId="c1" />);
-    await screen.findByText('Kenapa rupiah melemah?', { selector: 'span' });
+    await screen.findByRole('heading', { name: 'Kenapa rupiah melemah?', level: 1 });
     await user.type(screen.getByRole('textbox', { name: 'Message' }), 'one');
     await user.click(screen.getByRole('button', { name: 'Send' }));
     await waitFor(() => expect(ipc.agentPrompt).toHaveBeenCalledTimes(1));
@@ -662,7 +661,7 @@ describe('ChatProject', () => {
   it('does not prefix the skills for Claude, which loads the plugin', async () => {
     const user = userEvent.setup();
     render(<ChatProject chatId="c1" />);
-    await screen.findByText('Kenapa rupiah melemah?', { selector: 'span' });
+    await screen.findByRole('heading', { name: 'Kenapa rupiah melemah?', level: 1 });
     await user.type(screen.getByRole('textbox', { name: 'Message' }), 'one');
     await user.click(screen.getByRole('button', { name: 'Send' }));
     await waitFor(() => expect(ipc.agentPrompt).toHaveBeenCalledTimes(1));
@@ -673,7 +672,7 @@ describe('ChatProject', () => {
     const user = userEvent.setup();
     vi.mocked(ipc.agentStart).mockResolvedValueOnce(true);
     render(<ChatProject chatId="c1" />);
-    await screen.findByText('Kenapa rupiah melemah?', { selector: 'span' });
+    await screen.findByRole('heading', { name: 'Kenapa rupiah melemah?', level: 1 });
     await user.type(screen.getByRole('textbox', { name: 'Message' }), 'one');
     await user.click(screen.getByRole('button', { name: 'Send' }));
     await waitFor(() => expect(ipc.agentPrompt).toHaveBeenCalledTimes(1));
@@ -902,7 +901,7 @@ describe('ChatProject render and jobs', () => {
     vi.mocked(ipc.mediaProbe).mockResolvedValue({ durationSec: 12.5, fps: 30, frames: 375, width: 1080, height: 1920 });
     vi.mocked(ipc.updateProject).mockImplementation(async (id, patch) => ({ ...projects[0]!, id, ...patch }));
     render(<ChatProject chatId="c1" />);
-    await screen.findByText('Kenapa rupiah melemah?', { selector: 'span' });
+    await screen.findByRole('heading', { name: 'Kenapa rupiah melemah?', level: 1 });
     await user.click(screen.getByRole('button', { name: 'Render video' }));
     await waitFor(() => expect(ipc.updateProject).toHaveBeenCalledWith('p1', { durationSec: 12.5 }));
     // Through the forward-only status move, never straight onto the row.
@@ -918,7 +917,7 @@ describe('ChatProject render and jobs', () => {
     vi.mocked(ipc.listProjects).mockResolvedValue([{ ...projects[0]!, status: 'draft' }, projects[1]!]);
     vi.mocked(ipc.setProjectStatus).mockImplementation(async (id, status) => ({ ...projects[0]!, id, status }));
     render(<ChatProject chatId="c1" />);
-    await screen.findByText('Kenapa rupiah melemah?', { selector: 'span' });
+    await screen.findByRole('heading', { name: 'Kenapa rupiah melemah?', level: 1 });
     expect(step('Script')).toHaveAttribute('aria-current', 'step');
     await user.type(screen.getByRole('textbox', { name: 'Message' }), 'go');
     await user.click(screen.getByRole('button', { name: 'Send' }));
@@ -972,7 +971,7 @@ describe('ChatProject render and jobs', () => {
 
   it('shows no command line without a tayang.json', async () => {
     render(<ChatProject chatId="c1" />);
-    await screen.findByText('Kenapa rupiah melemah?', { selector: 'span' });
+    await screen.findByRole('heading', { name: 'Kenapa rupiah melemah?', level: 1 });
     expect(screen.queryByText('Render command')).not.toBeInTheDocument();
   });
 
@@ -980,16 +979,33 @@ describe('ChatProject render and jobs', () => {
     const user = userEvent.setup();
     vi.mocked(ipc.mediaRender).mockRejectedValue(new Error('hyperframes render failed: no composition'));
     render(<ChatProject chatId="c1" />);
-    await screen.findByText('Kenapa rupiah melemah?', { selector: 'span' });
+    await screen.findByRole('heading', { name: 'Kenapa rupiah melemah?', level: 1 });
     await user.click(screen.getByRole('button', { name: 'Render video' }));
-    expect(await screen.findByText("Couldn't render: hyperframes render failed: no composition")).toBeInTheDocument();
+    expect(await screen.findByText(/Couldn't render: hyperframes render failed: no composition/)).toBeInTheDocument();
     expect(ipc.updateProject).not.toHaveBeenCalled();
+  });
+
+  it('tells the agent when the render fails, with the error, so it can fix the project', async () => {
+    const user = userEvent.setup();
+    vi.mocked(ipc.mediaRender).mockRejectedValue(new Error('hyperframes render failed: No composition found. No index.html file found.'));
+    render(<ChatProject chatId="c1" />);
+    await screen.findByRole('heading', { name: 'Kenapa rupiah melemah?', level: 1 });
+    await user.click(screen.getByRole('button', { name: 'Render video' }));
+    await waitFor(() => expect(ipc.agentPrompt).toHaveBeenCalled());
+    const [chatId, parts] = vi.mocked(ipc.agentPrompt).mock.calls[0]!;
+    expect(chatId).toBe('c1');
+    const sent = parts.map((p) => (p.type === 'text' ? p.text : '')).join('\n');
+    expect(sent).toContain('No index.html file found.');
+    expect(sent).toContain('fix');
+    // The chat shows the short request, not the whole error.
+    expect(await screen.findByText('Rendering failed. Find out why, fix it, and tell me when it can render.')).toBeInTheDocument();
+    expect(screen.getByRole('alert')).toHaveTextContent('Sent to your agent to fix');
   });
 
   it('tracks a turn as a build job: working, needs you, done, failed', async () => {
     const user = userEvent.setup();
     render(<ChatProject chatId="c1" />);
-    await screen.findByText('Kenapa rupiah melemah?', { selector: 'span' });
+    await screen.findByRole('heading', { name: 'Kenapa rupiah melemah?', level: 1 });
     const statuses = () => vi.mocked(ipc.upsertJob).mock.calls.map(([j]) => j.status);
     await user.type(screen.getByRole('textbox', { name: 'Message' }), 'go');
     await user.click(screen.getByRole('button', { name: 'Send' }));
@@ -1203,6 +1219,7 @@ describe('Agent picker', () => {
       info('opencode', 'opencode', true, '0.9.1'),
       info('codex', 'Codex', false, null),
       info('gemini', 'Gemini CLI', true, '0.4.0'),
+      info('custom', 'Your API', false, null),
     ] as never);
     vi.mocked(ipc.updateChatAgent).mockImplementation(async (id, agentId) => ({
       ...chat(id, id === 'c1' ? 'p1' : null),
@@ -1224,17 +1241,21 @@ describe('Agent picker', () => {
     ).toBeInTheDocument();
   });
 
-  it('lists installed agents with versions, a check on the current one, and disables the rest', async () => {
+  it('lists the agents without version numbers, a check on the current one, and disables the rest', async () => {
     const user = userEvent.setup();
     render(<ChatProject chatId="c1" />);
     await user.click(await screen.findByRole('button', { name: /Claude Code/ }));
     const current = await screen.findByRole('menuitem', { name: /Claude Code/ });
-    expect(current).toHaveTextContent('2.1.0');
+    expect(current).not.toHaveTextContent('2.1.0');
     expect(within(current).getByTestId('agent-check')).toBeInTheDocument();
     expect(screen.getByRole('menuitem', { name: /opencode/ })).not.toHaveAttribute('data-disabled');
     const codex = screen.getByRole('menuitem', { name: /Codex/ });
     expect(codex).toHaveAttribute('data-disabled');
     expect(codex).toHaveTextContent('Not installed');
+    // Your API is listed too; before its key is saved it says so instead of "Not installed".
+    const api = screen.getByRole('menuitem', { name: /Your API/ });
+    expect(api).toHaveAttribute('data-disabled');
+    expect(api).toHaveTextContent('Not set up');
     await user.click(screen.getByRole('menuitem', { name: 'Set up agents' }));
     expect(useApp.getState().route).toEqual({ name: 'settings' });
   });

@@ -1,6 +1,9 @@
 import { convertFileSrc, invoke } from '@tauri-apps/api/core';
+import type { UserSkill } from '@tayang/skills';
 import type {
   AgentId,
+  ApiCheck,
+  ApiProvider,
   AgentInfo,
   AgentUsage,
   ChatTrace,
@@ -25,18 +28,58 @@ import type {
   Style,
   SystemInfo,
   ToolStatus,
+  VoiceCheck,
+  VoiceKeySource,
+  VoiceStatus,
   QuestionResponse,
 } from '@tayang/shared';
 
 // ---- system and settings ----
+
+// Your API: the user's own provider key, run on the opencode engine Tayang downloads (api_engine.rs).
+export interface ApiStatus {
+  provider: ApiProvider | null;
+  hasKey: boolean;
+  engineInstalled: boolean;
+}
+export const apiStatus = () => invoke<ApiStatus>('api_status');
+/** Lists the models at `baseUrl`, which checks the key too; no `key` checks the saved one. */
+export const apiCheck = (baseUrl: string, key: string | null) => invoke<ApiCheck>('api_check', { baseUrl, key });
+/** One real one-token call with `model` before saving; no `key` uses the saved one. */
+export const apiTry = (baseUrl: string, key: string | null, model: string) => invoke<ApiCheck>('api_try', { baseUrl, key, model });
+export const apiReachable = (baseUrl: string) => invoke<boolean>('api_reachable', { baseUrl });
+/** Which voice sources have a key saved (the keys themselves never leave Rust). */
+export const voiceStatus = () => invoke<VoiceStatus>('voice_status');
+/** Checks the source's API key (null: the saved one); a good one is saved and that source becomes the voice source. */
+export const voiceKeySave = (source: VoiceKeySource, key: string | null) =>
+  invoke<[VoiceCheck, Settings]>('voice_key_save', { source, key });
+/** Forgets the source's API key; the voice source goes back to Tayang when it was that source. */
+export const voiceKeyClear = (source: VoiceKeySource) => invoke<Settings>('voice_key_clear', { source });
+/** Whether VoiceStudio is open on this computer. */
+export const voiceStudioCheck = () => invoke<VoiceCheck>('voice_studio_check');
+/** Saves the provider (and the key, when given) and makes Your API the default agent. */
+export const apiSave = (provider: ApiProvider, key: string | null) => invoke<Settings>('api_save', { provider, key });
+export const apiClear = () => invoke<Settings>('api_clear');
+/** Downloads the engine unless it's there; progress comes as `ENGINE_PROGRESS_EVENT`. */
+export const engineInstall = () => invoke<void>('engine_install');
+export const ENGINE_PROGRESS_EVENT = 'engine://progress';
+export interface EngineProgress {
+  done: number;
+  total: number | null;
+}
 export const getSystemInfo = () => invoke<SystemInfo>('get_system_info');
 export const detectAgents = () => invoke<AgentInfo[]>('detect_agents');
-export const checkTools = (agent: AgentId) => invoke<ToolStatus[]>('check_tools', { agent });
+export const checkTools = () => invoke<ToolStatus[]>('check_tools');
 export const getSettings = () => invoke<Settings>('get_settings');
 /** TAYANG_API_URL when the app was started with it: it wins over the API address in Settings. */
 export const apiUrlOverride = () => invoke<string | null>('api_url_override');
 export const updateSettings = (patch: Partial<Settings>) =>
   invoke<Settings>('update_settings', { patch });
+export const openverseCredentialsSaved = () => invoke<boolean>('openverse_credentials_saved');
+export const updateOpenverseCredentials = (credentials: { clientId: string; clientSecret: string } | null) =>
+  invoke<void>('update_openverse_credentials', { credentials });
+export const geminiKeySaved = () => invoke<boolean>('gemini_key_saved');
+export const updateGeminiKey = (key: string | null) => invoke<void>('update_gemini_key', { key });
 /** The operating system's preferred language (`id-ID`), or null when it can't be read. */
 export const systemLocale = () => invoke<string | null>('system_locale');
 export const pickFolder = () => invoke<string | null>('pick_folder');
@@ -157,6 +200,8 @@ export const mediaLatestRender = (projectId: string) =>
 export const recentImages = (chatId: string, since: string, limit: number) =>
   invoke<FileInfo[]>('recent_images', { chatId, since, limit });
 /** The newest render with its size and time; null when the project has none. */
+/** Shows a video in the file manager: its newest render selected, or its project folder without one. */
+export const showVideoInFolder = (projectId: string) => invoke<void>('show_video_in_folder', { projectId });
 export const latestRenderInfo = (projectId: string) => invoke<FileInfo | null>('latest_render_info', { projectId });
 /** The newest mp4 where renders land (renders/, the root, out/, runs/<run>/out/), still-empty ones too (a render being written); null when there is none. */
 export const newestVideoInfo = (projectId: string) => invoke<FileInfo | null>('newest_video_info', { projectId });
@@ -224,3 +269,41 @@ export const agentModels = (agentId: AgentId) => invoke<AgentModels | null>('age
 /** Picks the agent's model (null: its own default); a running session of `chatId` switches now. */
 export const setAgentModel = (agentId: AgentId, model: string | null, chatId: string | null) =>
   invoke<Settings>('set_agent_model', { agentId, model, chatId });
+
+// ---- the user's own skills (Skills screen) ----
+
+export interface SkillDetail {
+  skill: UserSkill;
+  /** SKILL.md without its frontmatter. */
+  body: string;
+}
+export const listSkills = () => invoke<UserSkill[]>('skills_list');
+export const readSkill = (id: string) => invoke<SkillDetail>('skill_read', { id });
+/** A new skill without `id`; otherwise saves that skill's description and instructions. */
+export const saveSkill = (input: { id?: string; name: string; description: string; body: string }) =>
+  invoke<UserSkill>('skill_save', { id: input.id ?? null, name: input.name, description: input.description, body: input.body });
+export const setSkillEnabled = (id: string, enabled: boolean) => invoke<UserSkill>('skill_set_enabled', { id, enabled });
+export const deleteSkill = (id: string) => invoke<void>('skill_delete', { id });
+/** From a SKILL.md file or a folder with one. */
+export const importSkill = (path: string) => invoke<UserSkill>('skill_import', { path });
+
+/** A skill found at a GitHub link, before it's added. */
+export interface FoundSkill {
+  /** Its folder in the repo, '' when SKILL.md is at the top. */
+  folder: string;
+  name: string;
+  description: string;
+  /** Files the agent could run, relative to the skill's folder (the first few). */
+  scripts: string[];
+  scriptCount: number;
+  /** Its folder on GitHub. */
+  source: string;
+}
+export interface SkillDownload {
+  id: string;
+  skills: FoundSkill[];
+}
+export const fetchGithubSkills = (url: string) => invoke<SkillDownload>('skill_github_fetch', { url });
+export const installGithubSkills = (id: string, picks: { folder: string; source: string }[]) =>
+  invoke<{ added: UserSkill[]; failed: string[] }>('skill_github_install', { id, picks });
+export const discardGithubSkills = (id: string) => invoke<void>('skill_github_discard', { id });

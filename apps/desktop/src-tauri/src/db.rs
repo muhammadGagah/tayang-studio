@@ -5,6 +5,7 @@ use rusqlite::types::{Value as Sql, ValueRef};
 use rusqlite::{params_from_iter, Connection, OptionalExtension};
 use serde::de::DeserializeOwned;
 use serde_json::{json, Map, Value};
+use std::collections::HashSet;
 use std::path::Path;
 use std::sync::Mutex;
 
@@ -295,6 +296,7 @@ fn merge_patch(target: &mut Value, patch: &Value) {
 pub struct Db {
     conn: Mutex<Connection>,
     home: Mutex<std::path::PathBuf>,
+    bundled_styles: Vec<Style>,
 }
 
 impl Db {
@@ -306,6 +308,11 @@ impl Db {
         Self::init(Connection::open_in_memory()?)
     }
 
+    pub(crate) fn with_bundled_styles(mut self) -> Result<Self> {
+        self.bundled_styles = serde_json::from_str(include_str!("../styles/lemo-opuscar/catalog.json"))?;
+        Ok(self)
+    }
+
     fn init(conn: Connection) -> Result<Db> {
         conn.execute_batch(SCHEMA)?;
         Self::migrate_styles(&conn)?;
@@ -313,7 +320,7 @@ impl Db {
         Self::migrate_projects(&conn)?;
         Self::migrate_autopilots(&conn)?;
         Self::migrate_archive(&conn)?;
-        Ok(Db { conn: Mutex::new(conn), home: Mutex::new(Default::default()) })
+        Ok(Db { conn: Mutex::new(conn), home: Mutex::new(Default::default()), bundled_styles: Vec::new() })
     }
 
     fn conn(&self) -> std::sync::MutexGuard<'_, Connection> {
@@ -334,6 +341,7 @@ impl Db {
             "apiUrl": DEFAULT_API_URL,
             "installId": "",
             "shareInstallStats": true,
+            "openverseSoundEffects": false,
             "lastPingAt": null,
             "autoMode": false,
             "uiLanguage": null,
@@ -342,6 +350,7 @@ impl Db {
             "buildJobsChecked": false,
             "projectStatusChecked": false,
             "agentModels": {},
+            "voiceSource": "tayang",
         })
     }
 
@@ -358,14 +367,20 @@ impl Db {
 
     fn settings_value(&self, home: &Path) -> Result<Value> {
         let mut v = Self::default_settings(home);
+        let mut has_voice_source = false;
         let conn = self.conn();
         let mut stmt = conn.prepare("SELECT key, value FROM settings")?;
         let rows = stmt.query_map([], |r| Ok((r.get::<_, String>(0)?, r.get::<_, String>(1)?)))?;
         for row in rows {
             let (k, raw) = row?;
             if let (Ok(val), Some(obj)) = (serde_json::from_str::<Value>(&raw), v.as_object_mut()) {
+                has_voice_source |= k == "voiceSource";
                 obj.insert(k, val);
             }
+        }
+        // Older local builds stored Gemini in voiceProvider. An explicit voiceSource wins.
+        if !has_voice_source && v["voiceProvider"].as_str() == Some("gemini") {
+            v["voiceSource"] = json!("gemini");
         }
         if let Some(new) = v.get("apiUrl").and_then(Value::as_str).and_then(migrate_api_url) {
             v["apiUrl"] = Value::String(new);
@@ -900,13 +915,17 @@ impl Db {
             }
             out.push(serde_json::from_value(v)?);
         }
+        let first_user_style = out.iter().position(|s: &Style| s.source != StyleSource::Builtin).unwrap_or(out.len());
+        let existing: HashSet<_> = out.iter().map(|s| s.id.as_str()).collect();
+        let bundled: Vec<_> = self.bundled_styles.iter().filter(|s| !existing.contains(s.id.as_str())).cloned().collect();
+        out.splice(first_user_style..first_user_style, bundled);
         Ok(out)
     }
 
     /// Inserts or replaces a style. Built-in styles are read-only.
     pub fn save_style(&self, s: &Style) -> Result<()> {
         let conn = self.conn();
-        if Self::is_builtin(&conn, &s.id)? || s.source == StyleSource::Builtin {
+        if self.is_builtin(&conn, &s.id)? || s.source == StyleSource::Builtin {
             return Err(DbError("built-in styles cannot be changed".into()));
         }
         let source = serde_json::to_value(s.source)?;
@@ -951,7 +970,7 @@ impl Db {
 
     pub fn delete_style(&self, id: &str) -> Result<()> {
         let conn = self.conn();
-        if Self::is_builtin(&conn, id)? {
+        if self.is_builtin(&conn, id)? {
             return Err(DbError("built-in styles cannot be deleted".into()));
         }
         // An autopilot would quietly lose its look: the user changes that autopilot first.
@@ -971,11 +990,14 @@ impl Db {
         self.conn().execute("DELETE FROM styles WHERE id = ?1", [id]).unwrap();
     }
 
-    fn is_builtin(conn: &Connection, id: &str) -> Result<bool> {
+    fn is_builtin(&self, conn: &Connection, id: &str) -> Result<bool> {
         let source: Option<String> = conn
             .query_row("SELECT source FROM styles WHERE id = ?1", [id], |r| r.get(0))
             .optional()?;
-        Ok(source.as_deref() == Some("builtin"))
+        Ok(match source.as_deref() {
+            Some(source) => source == "builtin",
+            None => self.bundled_styles.iter().any(|style| style.id == id),
+        })
     }
 
     // ---- jobs ----
@@ -1047,11 +1069,11 @@ impl Db {
     /// Creates an autopilot (no id; starts active) or edits one (keeps its status and creation time).
     pub fn save_autopilot(&self, input: &AutopilotInput) -> Result<Autopilot> {
         validate_autopilot(input)?;
-        let style_known: bool = self
-            .conn()
-            .query_row("SELECT 1 FROM styles WHERE id = ?1", [&input.style_id], |_| Ok(true))
-            .optional()?
-            .unwrap_or(false);
+        let style_known = self.bundled_styles.iter().any(|style| style.id == input.style_id)
+            || self.conn()
+                .query_row("SELECT 1 FROM styles WHERE id = ?1", [&input.style_id], |_| Ok(true))
+                .optional()?
+                .unwrap_or(false);
         if !style_known {
             return Err(DbError(format!("That style isn't in your library: {}", input.style_id)));
         }
@@ -1308,6 +1330,15 @@ mod tests {
         assert!(!s.project_status_checked, "the one-time project status backfill hasn't run");
         db.update_settings(json!({"projectStatusChecked": true})).unwrap();
         assert!(db.get_settings(&home).project_status_checked);
+        assert!(!s.openverse_sound_effects);
+        assert_eq!(s.voice_source, VoiceSource::Tayang);
+        db.conn().execute("INSERT INTO settings (key, value) VALUES (?1, ?2)",
+            ["voiceProvider", r#""gemini""#]).unwrap();
+        assert_eq!(db.get_settings(&home).voice_source, VoiceSource::Gemini);
+        db.update_settings(json!({"voiceSource":"fishaudio"})).unwrap();
+        assert_eq!(db.get_settings(&home).voice_source, VoiceSource::Fishaudio);
+        db.update_settings(json!({"openverseSoundEffects": true})).unwrap();
+        assert!(db.get_settings(&home).openverse_sound_effects);
         let l = db.update_settings(json!({"uiLanguage": "id"})).unwrap();
         assert_eq!(l.ui_language, Some(UiLanguage::Id));
         assert_eq!(db.get_settings(&home).ui_language, Some(UiLanguage::Id));
@@ -1642,6 +1673,40 @@ mod tests {
         assert_eq!(db.list_styles().unwrap(), vec![mine.clone()]);
         db.delete_style("s1").unwrap();
         assert!(db.list_styles().unwrap().is_empty());
+    }
+
+    #[test]
+    fn bundled_styles_work_offline_and_survive_api_sync() {
+        let db = db().with_bundled_styles().unwrap();
+        let styles = db.list_styles().unwrap();
+        assert_eq!(styles.len(), 66);
+        assert_eq!(styles.iter().map(|s| &s.id).collect::<HashSet<_>>().len(), styles.len());
+        assert!(styles.iter().all(|s| {
+            s.source == StyleSource::Builtin
+                && s.id.starts_with("lemo-opuscar-")
+                && s.engine.is_some()
+                && !s.prompt.is_empty()
+                && !s.palette.is_empty()
+        }));
+
+        let id = "lemo-opuscar-watercolor";
+        let watercolor = db.get_style(id).unwrap().unwrap();
+        assert_eq!(watercolor.engine, Some(StyleEngine::Hyperframes));
+        assert_eq!(db.get_style("lemo-opuscar-brick-toy").unwrap().unwrap().engine, Some(StyleEngine::Remotion));
+        assert!(db.delete_style(id).is_err());
+        assert!(db.save_style(&Style { source: StyleSource::Mine, ..watercolor.clone() }).is_err());
+
+        let clone = Style { id: "my-watercolor".into(), source: StyleSource::Mine, based_on: Some(id.into()), ..watercolor.clone() };
+        db.save_style(&clone).unwrap();
+        db.replace_builtin_styles(&[builtin("server-style", true)]).unwrap();
+        let synced = db.list_styles().unwrap();
+        assert_eq!(synced.first().unwrap().id, "server-style");
+        assert_eq!(synced.last().unwrap(), &clone);
+        db.replace_builtin_styles(&[]).unwrap();
+        assert_eq!(db.get_style(id).unwrap(), Some(watercolor));
+        let mut schedule = input("Watercolor series");
+        schedule.style_id = id.into();
+        assert_eq!(db.save_autopilot(&schedule).unwrap().style_id, id);
     }
 
     #[test]

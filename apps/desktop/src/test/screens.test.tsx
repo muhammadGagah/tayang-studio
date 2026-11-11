@@ -3,6 +3,7 @@ import userEvent from '@testing-library/user-event';
 import { StrictMode } from 'react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { AgentInfo, AgentUpdate, Job, PermissionRequest, Project, Settings, Style as StyleT } from '@tayang/shared';
+import bundledCatalog from '../../src-tauri/styles/lemo-opuscar/catalog.json?raw';
 
 vi.mock('@/lib/ipc', () => ({
   apiUrlOverride: vi.fn().mockResolvedValue(null),
@@ -17,6 +18,8 @@ vi.mock('@/lib/ipc', () => ({
   deleteAutopilot: vi.fn().mockResolvedValue(undefined),
   updateSlot: vi.fn(),
   listProjects: vi.fn(),
+  videoThumbnail: vi.fn().mockResolvedValue(null),
+  showVideoInFolder: vi.fn().mockResolvedValue(undefined),
   updateProject: vi.fn(),
   setSchedule: vi.fn(),
   setPosted: vi.fn(),
@@ -46,6 +49,11 @@ vi.mock('@/lib/ipc', () => ({
   agentRespondPermission: vi.fn(),
   getSettings: vi.fn(),
   updateSettings: vi.fn(),
+  voiceStatus: vi.fn().mockResolvedValue({ hasElevenKey: false, hasFishKey: false }),
+  geminiKeySaved: vi.fn().mockResolvedValue(false),
+  updateGeminiKey: vi.fn().mockResolvedValue(undefined),
+  openverseCredentialsSaved: vi.fn().mockResolvedValue(false),
+  updateOpenverseCredentials: vi.fn().mockResolvedValue(undefined),
   pickFolder: vi.fn(),
   detectAgents: vi.fn(),
   checkTools: vi.fn(),
@@ -176,6 +184,15 @@ describe('Videos', () => {
     expect(screen.getAllByText('Rendered one').length).toBeGreaterThan(0);
     expect(screen.queryByText('Draft one')).not.toBeInTheDocument();
     expect(screen.queryByText('Building one')).not.toBeInTheDocument();
+  });
+
+  it('shows each video in its folder, rendered or not', async () => {
+    vi.mocked(ipc.listProjects).mockResolvedValue([project('a', 'Rendered one', 'rendered'), project('b', 'Draft one', 'draft')]);
+    render(<Videos />);
+    await userEvent.click(await screen.findByRole('button', { name: 'Show Rendered one in its folder' }));
+    expect(ipc.showVideoInFolder).toHaveBeenCalledWith('a');
+    await userEvent.click(screen.getByRole('button', { name: 'Show Draft one in its folder' }));
+    expect(ipc.showVideoInFolder).toHaveBeenCalledWith('b');
   });
 
   it('shows the empty state', async () => {
@@ -311,7 +328,7 @@ describe('Style built-in styles from the API', () => {
     expect(ipc.syncStyles).toHaveBeenCalledTimes(1);
     expect(screen.queryByText('Updating built-in styles')).not.toBeInTheDocument();
     expect(container.querySelector('img')).toHaveAttribute('src', atlas.previewUrl);
-    expect(screen.queryByText('Built-in styles are from your last sync')).not.toBeInTheDocument();
+    expect(screen.queryByText('Offline. Showing available styles.')).not.toBeInTheDocument();
     expect(screen.getAllByText('Plain look').length).toBeGreaterThan(0);
   });
 
@@ -319,7 +336,7 @@ describe('Style built-in styles from the API', () => {
     vi.mocked(ipc.syncStyles).mockResolvedValue({ styles: [atlas], offline: true });
     vi.mocked(ipc.listStyles).mockResolvedValue([atlas]);
     const { container } = render(<Style />);
-    await screen.findByText('Built-in styles are from your last sync');
+    await screen.findByText('Offline. Showing available styles.');
     const imgs = [...container.querySelectorAll('img')];
     expect(imgs.length).toBe(1);
     imgs.forEach((img) => fireEvent.error(img));
@@ -339,17 +356,16 @@ describe('Style built-in styles from the API', () => {
     expect(await screen.findByText('Remotion')).toBeInTheDocument();
   });
 
-  it('offline with cached styles says they are from the last sync', async () => {
-    vi.mocked(ipc.syncStyles).mockResolvedValue({ styles: [atlas], offline: true });
-    vi.mocked(ipc.listStyles).mockResolvedValue([atlas]);
+  it('announces offline availability and starts a chat with a bundled style', async () => {
+    const watercolor = (JSON.parse(bundledCatalog) as StyleT[]).find((s) => s.id === 'lemo-opuscar-watercolor')!;
+    vi.mocked(ipc.syncStyles).mockResolvedValue({ styles: [watercolor], offline: true });
+    vi.mocked(ipc.listStyles).mockResolvedValue([watercolor]);
     render(<Style />);
-    expect(await screen.findByText('Built-in styles are from your last sync')).toBeInTheDocument();
-  });
-
-  it('offline with nothing cached asks to connect', async () => {
-    vi.mocked(ipc.syncStyles).mockResolvedValue({ styles: [], offline: true });
-    render(<Style />);
-    expect(await screen.findByText('Connect to the internet to load built-in styles')).toBeInTheDocument();
+    expect(await screen.findByText('Offline. Showing available styles.')).toHaveAttribute('role', 'status');
+    const dialog = await openCard(watercolor.name);
+    expect(within(dialog).getByText(watercolor.prompt)).toHaveAttribute('lang', 'en');
+    await userEvent.click(screen.getByRole('button', { name: 'Use in a new chat' }));
+    expect(useApp.getState().route).toEqual({ name: 'chat-new', styleId: watercolor.id });
   });
 
   it('Use in a new chat carries the style', async () => {
@@ -851,12 +867,14 @@ describe('Style popup after review', () => {
       list = [atlas, st];
     });
     render(<Style />);
+    await userEvent.click(screen.getByRole('tab', { name: 'Built in' }));
     const dialog = await openCard('Atlas journey');
     await userEvent.click(within(dialog).getByRole('button', { name: 'Clone to edit' }));
     expect(await screen.findByRole('textbox', { name: 'Style name' })).toBeInTheDocument();
     await userEvent.click(within(screen.getByRole('dialog')).getByRole('button', { name: 'Cancel' }));
     await userEvent.keyboard('{Escape}');
     await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
+    await waitFor(() => expect(screen.getByRole('button', { name: /Atlas journey \(copy\)/ })).toHaveFocus());
     const again = await openCard('Atlas journey \\(copy\\)');
     expect(within(again).queryByRole('textbox', { name: 'Style name' })).toBeNull();
     expect(within(again).getByRole('button', { name: 'Edit' })).toBeInTheDocument();
@@ -1489,6 +1507,7 @@ describe('Calendar scheduling', () => {
   });
 
   const at = (h: number, m = 0) => new Date(2026, 10, 12, h, m).toISOString();
+  const scheduledDay = 'Thursday, November 12, 2026';
   const today = new Date(2026, 10, 4);
   // The dialog's default slot and past check read the clock: 4 Nov 2026, 10:00 here.
   beforeEach(() => {
@@ -1508,16 +1527,16 @@ describe('Calendar scheduling', () => {
     render(<Calendar today={today} />);
     const cell = (await screen.findByText('Alpha')).closest('[data-testid="cal-cell"]') as HTMLElement;
     expect(cell).toHaveAttribute('data-date', '2026-11-12');
-    expect(within(cell).getByRole('button', { name: 'Alpha, Ready, 09:30' })).toBeInTheDocument();
-    expect(within(cell).getByRole('button', { name: 'Beta, Needs review, 10:00' })).toBeInTheDocument();
-    expect(within(cell).getByRole('button', { name: 'Gamma, Making, 11:00' })).toBeInTheDocument();
-    expect(within(cell).getByRole('button', { name: 'Delta, Posted, 12:00' })).toBeInTheDocument();
-    expect(within(cell).getByRole('button', { name: 'Epsilon, Draft, 13:00' })).toBeInTheDocument();
+    expect(within(cell).getByRole('button', { name: `Alpha, Ready, ${scheduledDay}, 09:30` })).toBeInTheDocument();
+    expect(within(cell).getByRole('button', { name: `Beta, Needs review, ${scheduledDay}, 10:00` })).toBeInTheDocument();
+    expect(within(cell).getByRole('button', { name: `Gamma, Making, ${scheduledDay}, 11:00` })).toBeInTheDocument();
+    expect(within(cell).getByRole('button', { name: `Delta, Posted, ${scheduledDay}, 12:00` })).toBeInTheDocument();
+    expect(within(cell).getByRole('button', { name: `Epsilon, Draft, ${scheduledDay}, 13:00` })).toBeInTheDocument();
     cleanup();
     setUiLanguage('id');
     try {
       render(<Calendar today={today} />);
-      expect(await screen.findByRole('button', { name: 'Beta, Perlu ditinjau, 10:00' })).toBeInTheDocument();
+      expect(await screen.findByRole('button', { name: 'Beta, Perlu ditinjau, Kamis, 12 November 2026, 10:00' })).toBeInTheDocument();
     } finally {
       setUiLanguage('en');
     }
@@ -1532,11 +1551,11 @@ describe('Calendar scheduling', () => {
     await userEvent.click(await screen.findByRole('button', { name: /^Alpha,/ }));
     await userEvent.click(await screen.findByRole('button', { name: 'Approve' }));
     expect(ipc.approveProject).toHaveBeenCalledWith('a');
-    await userEvent.click(await screen.findByRole('button', { name: 'Alpha, Ready, 09:00' }));
+    await userEvent.click(await screen.findByRole('button', { name: `Alpha, Ready, ${scheduledDay}, 09:00` }));
     expect(screen.queryByRole('button', { name: 'Approve' })).not.toBeInTheDocument();
     await userEvent.click(screen.getByRole('button', { name: 'Mark as posted' }));
     expect(ipc.setPosted).toHaveBeenCalledWith('a', true);
-    await userEvent.click(await screen.findByRole('button', { name: 'Alpha, Posted, 09:00' }));
+    await userEvent.click(await screen.findByRole('button', { name: `Alpha, Posted, ${scheduledDay}, 09:00` }));
     expect(screen.getByRole('button', { name: 'Not posted' })).toBeInTheDocument();
   });
 
@@ -1576,7 +1595,7 @@ describe('Calendar scheduling', () => {
     await userEvent.click(within(dialog).getByRole('button', { name: 'Save' }));
     await waitFor(() => expect(ipc.setSchedule).toHaveBeenCalledWith('a', new Date(2026, 10, 20, 18, 45).toISOString()));
     await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
-    await userEvent.click(await screen.findByRole('button', { name: 'Alpha, Ready, 18:45' }));
+    await userEvent.click(await screen.findByRole('button', { name: 'Alpha, Ready, Friday, November 20, 2026, 18:45' }));
     await userEvent.click(await screen.findByRole('button', { name: 'Schedule…' }));
     await userEvent.click(await screen.findByRole('button', { name: 'Clear schedule' }));
     await waitFor(() => expect(ipc.setSchedule).toHaveBeenLastCalledWith('a', null));
@@ -1755,19 +1774,138 @@ describe('Videos schedule action', () => {
 const openSettingsTab = (tab: string) => useApp.setState({ route: { name: 'settings', tab } });
 
 describe('Settings', () => {
+  it('selects Gemini by keyboard and saves and removes a masked API key', async () => {
+    const user = userEvent.setup();
+    openSettingsTab('tools');
+    render(<SettingsScreen />);
+    const voiceSource = await screen.findByRole('button', { name: 'Voice source: Tayang' });
+    expect(screen.queryByLabelText('Gemini API key')).toBeNull();
+    act(() => voiceSource.focus());
+    await user.keyboard('{Enter}');
+    await screen.findByRole('menuitemradio', { name: 'Gemini TTS' });
+    await user.keyboard('{End}{Enter}');
+    await waitFor(() => expect(ipc.updateSettings).toHaveBeenCalledWith({ voiceSource: 'gemini' }));
+    await screen.findByText('Add an API key to use Gemini TTS.');
+    const key = screen.getByLabelText('Gemini API key');
+    expect(key).toHaveAttribute('type', 'password');
+    await user.tab();
+    expect(key).toHaveFocus();
+    await user.keyboard('test-gemini-key');
+    vi.mocked(ipc.updateGeminiKey).mockRejectedValueOnce('invalid-key');
+    await user.keyboard('{Enter}');
+    const error = 'Google rejected the key. Check the key and its Gemini API permissions.';
+    expect(await screen.findByText(error)).toHaveAttribute('role', 'alert');
+    expect(key).toHaveAccessibleDescription(expect.stringContaining(error));
+    expect(key).toHaveAttribute('aria-invalid', 'true');
+    await user.keyboard('{Enter}');
+    expect(ipc.updateGeminiKey).toHaveBeenLastCalledWith('test-gemini-key');
+    expect(await screen.findByText('Gemini API key is saved in the system keychain.')).toHaveAttribute('role', 'status');
+    expect(key).toHaveValue('');
+    await user.tab();
+    await user.tab();
+    const remove = screen.getByRole('button', { name: 'Remove Gemini API key' });
+    expect(remove).toHaveFocus();
+    await user.keyboard('{Enter}');
+    expect(ipc.updateGeminiKey).toHaveBeenLastCalledWith(null);
+    expect(await screen.findByText('Add an API key to use Gemini TTS.')).toHaveAttribute('role', 'status');
+    expect(remove).toHaveFocus();
+  });
+
+  it('accepts and removes Openverse credentials with labeled keyboard controls and status feedback', async () => {
+    const user = userEvent.setup();
+    openSettingsTab('video');
+    render(<SettingsScreen />);
+    await screen.findByText('Openverse searches use anonymous access.');
+    const id = screen.getByLabelText('Openverse Client ID');
+    const secret = screen.getByLabelText('Openverse Client Secret');
+    const save = screen.getByRole('button', { name: 'Save Openverse credentials' });
+    const remove = screen.getByRole('button', { name: 'Remove Openverse credentials' });
+    expect(secret).toHaveAttribute('type', 'password');
+    expect(remove).toHaveAttribute('aria-disabled', 'true');
+    id.focus();
+    await user.keyboard('client-id');
+    await user.tab();
+    expect(secret).toHaveFocus();
+    await user.keyboard('client-secret');
+    await user.tab();
+    expect(save).toHaveFocus();
+    await user.keyboard('{Enter}');
+    expect(ipc.updateOpenverseCredentials).toHaveBeenCalledWith({ clientId: 'client-id', clientSecret: 'client-secret' });
+    expect(await screen.findByText('Openverse credentials are saved in the system keychain.')).toHaveAttribute('role', 'status');
+    expect(secret).toHaveValue('');
+    await user.tab();
+    expect(remove).toHaveFocus();
+    await user.keyboard('{Enter}');
+    expect(ipc.updateOpenverseCredentials).toHaveBeenLastCalledWith(null);
+    expect(await screen.findByText('Openverse searches use anonymous access.')).toHaveAttribute('role', 'status');
+    expect(remove).toHaveFocus();
+  });
+
+  it('announces rejected Openverse credentials without echoing the secret', async () => {
+    vi.mocked(ipc.updateOpenverseCredentials).mockRejectedValueOnce('invalid-credentials');
+    openSettingsTab('video');
+    render(<SettingsScreen />);
+    await screen.findByText('Openverse searches use anonymous access.');
+    await userEvent.type(screen.getByLabelText('Openverse Client ID'), 'client-id');
+    await userEvent.type(screen.getByLabelText('Openverse Client Secret'), 'client-secret');
+    await userEvent.click(screen.getByRole('button', { name: 'Save Openverse credentials' }));
+    const error = 'Openverse rejected the credentials. Check both values and try again.';
+    expect(await screen.findByText(error)).toHaveAttribute('role', 'alert');
+    expect(screen.getByLabelText('Openverse Client ID')).toHaveAccessibleDescription(error);
+    expect(screen.getByLabelText('Openverse Client Secret')).toHaveAttribute('aria-invalid', 'true');
+    expect(screen.queryByText(/client-secret/)).toBeNull();
+  });
+
+  it('explains Openverse sound search and saves the opt-in from the keyboard', async () => {
+    vi.mocked(ipc.updateSettings).mockResolvedValueOnce({ ...settings, openverseSoundEffects: true });
+    openSettingsTab('video');
+    render(<SettingsScreen />);
+    const toggle = await screen.findByRole('switch', {
+      name: 'Openverse sound effects',
+      description: /Tayang sends short sound search terms to Openverse/,
+    });
+    expect(toggle).not.toBeChecked();
+    toggle.focus();
+    await userEvent.keyboard(' ');
+    await waitFor(() => expect(toggle).toBeChecked());
+    expect(ipc.updateSettings).toHaveBeenCalledWith({ openverseSoundEffects: true });
+    expect(toggle).toHaveFocus();
+  });
+
   it('shows one tab at a time and remembers the last one', async () => {
+    const user = userEvent.setup();
     localStorage.clear();
     useApp.setState({ route: { name: 'settings' } });
     const { unmount } = render(<SettingsScreen />);
-    expect(await screen.findByRole('tab', { name: 'General' })).toHaveAttribute('aria-selected', 'true');
+    const general = await screen.findByRole('tab', { name: 'General' });
+    expect(general).toHaveAttribute('aria-selected', 'true');
     expect(screen.queryByRole('switch', { name: 'Keep Tayang running in the background' })).toBeNull();
-    await userEvent.click(screen.getByRole('tab', { name: 'Agents' }));
+    await user.tab();
+    expect(general).toHaveFocus();
+    await user.keyboard('{ArrowDown}');
+    const agents = screen.getByRole('tab', { name: 'Agents' });
+    await waitFor(() => expect(agents).toHaveFocus());
+    expect(agents).toHaveAttribute('aria-selected', 'false');
+    await user.keyboard('{Enter}');
+    expect(agents).toHaveAttribute('aria-selected', 'true');
+    expect(screen.getByRole('tabpanel', { name: 'Agents' })).toHaveAttribute('id', agents.getAttribute('aria-controls'));
     expect(await screen.findByRole('switch', { name: 'Keep Tayang running in the background' })).toBeInTheDocument();
     expect(screen.queryByRole('heading', { level: 2, name: 'General' })).toBeNull();
     unmount();
     render(<SettingsScreen />);
     expect(await screen.findByRole('tab', { name: 'Agents' })).toHaveAttribute('aria-selected', 'true');
     localStorage.clear();
+  });
+
+  it("How to install opens the agent's own install guide, not onboarding", async () => {
+    vi.mocked(ipc.detectAgents).mockResolvedValue([
+      { id: 'antigravity', name: 'Antigravity CLI', installed: false, version: null, acpCommand: ['agy', 'acp'], recommended: false },
+    ] as never);
+    openSettingsTab('agents');
+    render(<SettingsScreen />);
+    const link = await screen.findByRole('link', { name: 'How to install Antigravity CLI' });
+    expect(link).toHaveAttribute('href', 'https://antigravity.google/docs/getting-started?tab=cli');
+    expect(link).toHaveAttribute('target', '_blank');
   });
 
   it('background mode saves through updateSettings; open at login is disabled until it is on', async () => {
@@ -1906,6 +2044,8 @@ describe('Settings', () => {
     await userEvent.type(input, 'ftp://nope');
     await userEvent.tab();
     expect(await screen.findByText('Enter an address that starts with http:// or https://')).toBeInTheDocument();
+    expect(input).toHaveAttribute('aria-invalid', 'true');
+    expect(input).toHaveAccessibleDescription(/Enter an address that starts with http:\/\/ or https:\/\//);
     expect(ipc.updateSettings).not.toHaveBeenCalled();
   });
 

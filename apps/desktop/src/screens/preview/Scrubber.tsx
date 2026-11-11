@@ -1,4 +1,4 @@
-import { useRef, useState } from 'react';
+import { useId, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { formatTimecode } from '@tayang/shared';
 import { cn } from '@/lib/utils';
@@ -26,7 +26,8 @@ export function Scrubber({ durationSec, fps, frame, thumbnails, onSeek, scenes }
   const { t } = useTranslation();
   const total = Math.max(1, Math.round(durationSec * fps));
   const last = total - 1;
-  const ref = useRef<HTMLDivElement>(null);
+  const instructionsId = useId();
+  const ref = useRef<HTMLInputElement>(null);
   const dragging = useRef(false);
   /** The frame under the pointer while it hovers the strip without pressing. */
   const [hover, setHover] = useState<number | null>(null);
@@ -56,10 +57,11 @@ export function Scrubber({ durationSec, fps, frame, thumbnails, onSeek, scenes }
   };
 
   const onKeyDown = (e: React.KeyboardEvent) => {
-    const step = e.shiftKey ? fps : 1;
+    if (e.defaultPrevented || e.altKey || e.ctrlKey || e.metaKey) return;
+    const step = e.shiftKey ? Math.max(1, Math.round(fps)) : 1;
     let next: number | null = null;
-    if (e.key === 'ArrowRight') next = frame + step;
-    else if (e.key === 'ArrowLeft') next = frame - step;
+    if (e.key === 'ArrowRight' || e.key === 'ArrowUp') next = frame + step;
+    else if (e.key === 'ArrowLeft' || e.key === 'ArrowDown') next = frame - step;
     else if (e.key === 'Home') next = 0;
     else if (e.key === 'End') next = last;
     if (next === null) return;
@@ -69,39 +71,48 @@ export function Scrubber({ durationSec, fps, frame, thumbnails, onSeek, scenes }
 
   return (
     <div className="relative pt-7">
+      <span id={instructionsId} className="sr-only">{t('preview.timelineKeys')}</span>
       {/* Sits on the playhead (or the hover) and slides along it, so it never leaves the strip. */}
       <div
+        aria-hidden="true"
         data-testid="scrubber-bubble"
         className="pointer-events-none absolute top-0 whitespace-nowrap rounded-md border border-hairline bg-raised px-1.5 py-0.5 font-mono text-[11px] leading-4 tabular-nums text-foreground"
         style={{ left: `${bubblePct}%`, transform: `translateX(-${bubblePct}%)` }}
       >
         {shownScene ? `${shownTime} · ${shownScene.name}` : shownTime}
       </div>
-      <div
-        ref={ref}
-        role="slider"
-        tabIndex={0}
-        aria-label={t('preview.framesAria')}
-        aria-valuemin={0}
-        aria-valuemax={last}
-        aria-valuenow={frame}
-        aria-valuetext={time}
-        onKeyDown={onKeyDown}
-        onPointerDown={(e) => {
-          dragging.current = true;
-          setHover(null);
-          e.currentTarget.setPointerCapture?.(e.pointerId);
-          seekFromX(e.clientX);
-        }}
-        onPointerMove={(e) => {
-          if (dragging.current) seekFromX(e.clientX);
-          else if (e.pointerType !== 'touch') setHover(frameFromX(e.clientX));
-        }}
-        onPointerLeave={() => setHover(null)}
-        onPointerUp={() => (dragging.current = false)}
-        onPointerCancel={() => (dragging.current = false)}
-        className="relative flex h-12 cursor-pointer touch-none gap-0.5 overflow-hidden rounded-md outline-none focus-visible:ring-2 focus-visible:ring-ring"
-      >
+      <div className="relative flex h-12 gap-0.5 overflow-hidden rounded-md has-focus-visible:outline-2 has-focus-visible:outline-offset-2 has-focus-visible:outline-ring">
+        <input
+          ref={ref}
+          type="range"
+          min={0}
+          max={last}
+          value={frame}
+          aria-label={t('preview.framesAria')}
+          aria-describedby={instructionsId}
+          aria-valuetext={scene ? `${time} · ${scene.name}` : time}
+          onChange={(e) => onSeek(e.currentTarget.valueAsNumber)}
+          onKeyDown={onKeyDown}
+          onPointerDown={(e) => {
+            if (e.button !== 0) return;
+            // Use the full strip for pointer seeking, including its edges.
+            e.preventDefault();
+            e.currentTarget.focus();
+            dragging.current = true;
+            setHover(null);
+            e.currentTarget.setPointerCapture?.(e.pointerId);
+            seekFromX(e.clientX);
+          }}
+          onPointerMove={(e) => {
+            if (dragging.current) seekFromX(e.clientX);
+            else if (e.pointerType !== 'touch') setHover(frameFromX(e.clientX));
+          }}
+          onPointerLeave={() => setHover(null)}
+          onPointerUp={() => (dragging.current = false)}
+          onLostPointerCapture={() => (dragging.current = false)}
+          onPointerCancel={() => (dragging.current = false)}
+          className="absolute inset-0 z-10 m-0 h-full w-full cursor-pointer touch-none opacity-0"
+        />
         {thumbnails.map((src, i) => {
           const sec = ((i + 0.5) / thumbnails.length) * durationSec;
           const built = sceneAt(sec)?.built !== false;

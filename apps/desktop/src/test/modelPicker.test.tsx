@@ -58,11 +58,41 @@ describe('ModelPicker', () => {
     expect(ipc.agentModels).toHaveBeenCalledTimes(1);
   });
 
+  it("never keeps Your API's models between launches: they follow the saved provider", async () => {
+    localStorage.setItem(
+      'tayang.agentModels',
+      JSON.stringify({ custom: { current: null, options: [{ value: 'opencode/big-pickle', name: 'Big Pickle' }] }, opencode: { current: null, options: OPTIONS } }),
+    );
+    vi.resetModules();
+    const { useModels: fresh } = await import('@/state/models');
+    expect(fresh.getState().byAgent.custom).toBeUndefined();
+    expect(fresh.getState().byAgent.opencode?.options).toHaveLength(3);
+    vi.mocked(ipc.agentModels).mockResolvedValue({ current: 'tayang/m', options: [{ value: 'tayang/m', name: 'Your API/m' }] });
+    await fresh.getState().load('custom');
+    expect(fresh.getState().byAgent.custom?.options).toHaveLength(1);
+    expect(JSON.parse(localStorage.getItem('tayang.agentModels')!).custom).toBeUndefined();
+  });
+
+  it('shows a loading state while the agent is asked for its models', async () => {
+    let answer: (v: { current: string | null; options: typeof OPTIONS }) => void = () => {};
+    vi.mocked(ipc.agentModels).mockReturnValue(new Promise((r) => (answer = r)));
+    picker();
+    await userEvent.click(screen.getByRole('button', { name: /^Model:/ }));
+    const status = await screen.findByRole('status');
+    expect(status).toHaveTextContent('Asking opencode for its models…');
+    expect(screen.queryByRole('option', { name: 'Big Pickle' })).not.toBeInTheDocument();
+    await act(async () => answer({ current: null, options: OPTIONS }));
+    expect(await screen.findByRole('option', { name: 'Big Pickle' })).toBeInTheDocument();
+    expect(screen.getByRole('status')).toBe(status);
+    expect(status).toBeEmptyDOMElement();
+  });
+
   it('filters by name, so the free ones are easy to find', async () => {
     useModels.setState({ byAgent: { opencode: { current: null, options: OPTIONS } } });
     picker();
     await userEvent.click(screen.getByRole('button', { name: /^Model:/ }));
-    await userEvent.type(screen.getByPlaceholderText('Find a model'), 'free');
+    expect(screen.getByRole('dialog', { name: 'Model: Default model' })).toBeInTheDocument();
+    await userEvent.type(screen.getByRole('combobox', { name: 'Find a model' }), 'free');
     await waitFor(() => expect(screen.queryByRole('option', { name: 'Big Pickle' })).not.toBeInTheDocument());
     expect(screen.getByRole('option', { name: 'Nemotron 3 Ultra Free' })).toBeInTheDocument();
   });
