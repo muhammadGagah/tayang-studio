@@ -144,11 +144,14 @@ mod tests {
 
     #[test]
     fn only_a_videos_own_folder_is_its_project_folder() {
-        assert!(is_project_folder(Path::new("/Users/a/Tayang/my-video"), "my-video"));
-        assert!(!is_project_folder(Path::new("/Users/a/Tayang/my-video"), "other"));
-        assert!(!is_project_folder(Path::new("/Users/a/Tayang"), ""));
-        assert!(!is_project_folder(Path::new("/my-video"), "my-video"));
-        assert!(!is_project_folder(Path::new("/"), "my-video"));
+        let root = Path::new(if cfg!(windows) { "C:/" } else { "/" });
+        let parent = root.join("Users/a/Tayang");
+        let video = parent.join("my-video");
+        assert!(is_project_folder(&video, "my-video"));
+        assert!(!is_project_folder(&video, "other"));
+        assert!(!is_project_folder(&parent, ""));
+        assert!(!is_project_folder(&root.join("my-video"), "my-video"));
+        assert!(!is_project_folder(root, "my-video"));
         assert!(!is_project_folder(Path::new("Tayang/my-video"), "my-video"));
     }
 

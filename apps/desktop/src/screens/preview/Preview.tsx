@@ -205,6 +205,7 @@ export function Preview({
   const checkLive = useCallback(async () => {
     try {
       const next = await previewStatus(projectId);
+      if (next?.engine && renderButtonRef.current === document.activeElement) restorePlayFocus.current = true;
       setLiveStatus((s) => (s && s.engine === next?.engine && s.codeNewer === next?.codeNewer ? s : (next ?? null)));
     } catch {
       setLiveStatus(null);

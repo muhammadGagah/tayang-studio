@@ -8,7 +8,7 @@ import { parseArgs, startServer } from '../src/server.mjs';
 import { confined, ignoredChange } from '../src/files.mjs';
 import { hyperframesPage, previewConfig, remotionEntry } from '../src/project.mjs';
 import { NEEDS_PACKAGES, remotionPackages } from '../src/remotion.mjs';
-import { hideAudioFromPlayer, npxPath } from '../src/hyperframes.mjs';
+import { hideAudioFromPlayer, npxCommand } from '../src/hyperframes.mjs';
 
 const tmp = () => fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'tayang-preview-test-')));
 const write = (dir, rel, body = '') => {
@@ -112,8 +112,9 @@ test('only <audio> data-start is hidden from the player; video and the rest stay
 });
 
 test('npx is found next to node', () => {
-  assert.equal(npxPath('/usr/local/bin/node', 'darwin'), '/usr/local/bin/npx');
-  assert.equal(npxPath('C:\\node\\node.exe', 'win32').endsWith('npx.cmd'), true);
+  assert.deepEqual(npxCommand('/usr/local/bin/node', 'darwin'), ['/usr/local/bin/npx']);
+  const node = 'C:\\Program Files\\nodejs\\node.exe';
+  assert.deepEqual(npxCommand(node, 'win32'), [node, 'C:\\Program Files\\nodejs\\node_modules\\npm\\bin\\npx-cli.js']);
 });
 
 function fakeEngine(folder, calls) {

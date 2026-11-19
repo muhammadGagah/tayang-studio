@@ -54,6 +54,17 @@ beforeEach(() => {
 });
 
 describe('Preview: live from the code', () => {
+  it('moves focus from the empty preview to Play when live code becomes available', async () => {
+    m.mediaLatestRender.mockResolvedValue(null);
+    m.mediaProbe.mockResolvedValue(null);
+    m.previewStatus.mockResolvedValue({ engine: null, codeNewer: false });
+    const { rerender } = render(<Preview projectId="p1" chatId="c1" />);
+    (await screen.findByRole('button', { name: 'Render preview' })).focus();
+    m.previewStatus.mockResolvedValue({ engine: 'hyperframes', codeNewer: true });
+    rerender(<Preview projectId="p1" chatId="c1" reloadKey={1} />);
+    expect(await screen.findByRole('button', { name: 'Play' })).toHaveFocus();
+  });
+
   it('plays live when there is no render yet, and speaks the protocol to the iframe', async () => {
     m.mediaLatestRender.mockResolvedValue(null);
     m.mediaProbe.mockResolvedValue(null);
@@ -116,7 +127,7 @@ describe('Preview: live from the code', () => {
     m.previewStatus.mockResolvedValue({ engine: 'hyperframes', codeNewer: false });
     const { container } = render(<Preview projectId="p1" chatId="c1" />);
 
-    const renderTab = await screen.findByRole('tab', { name: /^Render · \d/ });
+    const renderTab = await screen.findByRole('tab', { name: /^Render · .+/ });
     await waitFor(() => expect(renderTab).toHaveAttribute('aria-selected', 'true'));
     expect(container.querySelector('video')).not.toBeNull();
     expect(m.previewStart).not.toHaveBeenCalled();

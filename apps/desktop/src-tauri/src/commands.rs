@@ -2404,7 +2404,7 @@ impl ApiKeys {
 pub struct VoiceStatus {
     has_eleven_key: bool,
     has_fish_key: bool,
-    has_gemini_key: bool,
+    has_gemini_key: Option<bool>,
 }
 
 /// The keychain account of a source that has an API key, and its name in Settings.
@@ -2421,13 +2421,13 @@ fn voice_key_source(source: crate::types::VoiceSource) -> CmdResult<(&'static st
 #[tauri::command]
 pub async fn voice_status(keys: State<'_, ApiKeys>) -> CmdResult<VoiceStatus> {
     use crate::types::VoiceSource;
-    let mut saved = [false; 3];
+    let mut saved = [None; 3];
     for (i, source) in [VoiceSource::Elevenlabs, VoiceSource::Fishaudio, VoiceSource::Gemini].into_iter().enumerate() {
         if let Some(account) = source.key_account() {
-            saved[i] = keys.get_account(account).await.ok().flatten().is_some_and(|k| !k.is_empty());
+            saved[i] = keys.get_account(account).await.ok().map(|key| key.is_some_and(|k| !k.is_empty()));
         }
     }
-    Ok(VoiceStatus { has_eleven_key: saved[0], has_fish_key: saved[1], has_gemini_key: saved[2] })
+    Ok(VoiceStatus { has_eleven_key: saved[0].unwrap_or(false), has_fish_key: saved[1].unwrap_or(false), has_gemini_key: saved[2] })
 }
 
 /// Checks the source's API key (no `key`: the saved one) and, when it is good, saves it and makes

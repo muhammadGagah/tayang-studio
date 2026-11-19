@@ -91,7 +91,7 @@ function KeyPanel({ source, active, inUse, hasKey, onHasKey, onSaved, onBusy, on
   source: VoiceKeySource;
   active: boolean;
   inUse: string;
-  hasKey: boolean;
+  hasKey: boolean | null;
   onHasKey(has: boolean): void;
   onSaved(s: Settings): void;
   onBusy(busy: boolean): void;
@@ -104,7 +104,7 @@ function KeyPanel({ source, active, inUse, hasKey, onHasKey, onSaved, onBusy, on
   const [check, setCheck] = useState<VoiceCheck | null>(null);
   const [error, setError] = useState<string | null>(null);
   const removeButton = useRef<HTMLButtonElement>(null);
-  const canSave = !!key.trim() || hasKey;
+  const canSave = !!key.trim() || hasKey !== false;
   const fail = (e: unknown) => setError(t('settings.saveError', { message: e instanceof Error ? e.message : String(e) }));
 
   const save = async () => {
@@ -187,7 +187,7 @@ function KeyPanel({ source, active, inUse, hasKey, onHasKey, onSaved, onBusy, on
         <Button type="submit" variant="light" className="h-9 px-3 text-[13px] font-semibold aria-disabled:opacity-50" aria-disabled={busy || !canSave}>
           {t('voice.keySave')}
         </Button>
-        {hasKey && (
+        {hasKey !== false && (
           <Button ref={removeButton} type="button" variant="ghost" className="h-9 px-2 text-[13px] aria-disabled:opacity-50" aria-disabled={busy} onClick={() => void remove()}>
             {t('voice.keyRemove')}
           </Button>
@@ -196,8 +196,10 @@ function KeyPanel({ source, active, inUse, hasKey, onHasKey, onSaved, onBusy, on
       <p role="status" className="m-0 text-[13px] text-text-2 empty:absolute">
         {busy ? t('voice.checking') : result}
       </p>
-      {!check && !active && !hasKey && <span className="text-xs text-text-3">{t('voice.notYet', { name: inUse })}</span>}
-      <p id="voice-key-error" role="alert" className="m-0 text-[13px] text-orange-light empty:absolute">{error || resultError}</p>
+      {!check && !active && hasKey === false && <span className="text-xs text-text-3">{t('voice.notYet', { name: inUse })}</span>}
+      <p id="voice-key-error" role="alert" className="m-0 text-[13px] text-orange-light empty:absolute">
+        {error || resultError || (source === 'gemini' && hasKey === null && t('settings.geminiKeychainError'))}
+      </p>
     </form>
   );
 }
@@ -212,7 +214,7 @@ export function VoiceSourceCard({ settings, onSaved }: { settings: Settings; onS
   /** A source with a key that was picked to set up its key: its panel is open even while another source is in use. */
   const [setup, setSetup] = useState<VoiceKeySource | null>(null);
   const shown: VoiceSource = setup ?? active;
-  const [hasKey, setHasKey] = useState<Record<VoiceKeySource, boolean>>({ elevenlabs: false, fishaudio: false, gemini: false });
+  const [hasKey, setHasKey] = useState<Record<VoiceKeySource, boolean | null>>({ elevenlabs: false, fishaudio: false, gemini: false });
   const trigger = useRef<HTMLButtonElement>(null);
   const panel = useRef<HTMLDivElement>(null);
   const [menuOpen, setMenuOpen] = useState(false);
@@ -223,7 +225,10 @@ export function VoiceSourceCard({ settings, onSaved }: { settings: Settings; onS
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    voiceStatus().then((s) => setHasKey({ elevenlabs: s.hasElevenKey, fishaudio: s.hasFishKey, gemini: s.hasGeminiKey }), () => {});
+    voiceStatus().then(
+      (s) => setHasKey({ elevenlabs: s.hasElevenKey, fishaudio: s.hasFishKey, gemini: s.hasGeminiKey }),
+      () => setHasKey((keys) => ({ ...keys, gemini: null })),
+    );
   }, []);
 
   const checkStudio = () => {
@@ -293,7 +298,7 @@ export function VoiceSourceCard({ settings, onSaved }: { settings: Settings; onS
                 <DropdownMenuRadioItem key={o.id} value={o.id} disabled={savingSource || keyBusy} onSelect={() => void pick(o.id)} className="h-9 gap-2 text-[13px]">
                   <img src={o.logo} alt="" aria-hidden="true" className="size-4 shrink-0" />
                   <span className="font-medium">{o.name}</span>
-                  {o.id !== active && isKeySource(o.id) && !hasKey[o.id] && (
+                  {o.id !== active && isKeySource(o.id) && hasKey[o.id] === false && (
                     <span className="ml-auto text-[11px] text-text-3">{t('voice.needsKey')}</span>
                   )}
                 </DropdownMenuRadioItem>
@@ -318,6 +323,7 @@ export function VoiceSourceCard({ settings, onSaved }: { settings: Settings; onS
             onBusy={setKeyBusy}
             onRemove={(returnFocus) => {
               if (returnFocus || (active === shown && panel.current?.contains(document.activeElement))) trigger.current?.focus();
+              setSetup(null);
               setNotice(t('voice.keyRemoved'));
             }}
           />

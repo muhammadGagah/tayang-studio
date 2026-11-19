@@ -113,6 +113,13 @@ describe('VoiceSourceCard', () => {
     expect(onSaved).toHaveBeenCalledWith(withSource('gemini'));
   });
 
+  it('keeps the Gemini key controls available if the keychain cannot be read', async () => {
+    vi.mocked(ipc.voiceStatus).mockResolvedValueOnce({ hasElevenKey: false, hasFishKey: false, hasGeminiKey: null });
+    render(<VoiceSourceCard settings={withSource('gemini')} onSaved={() => {}} />);
+    expect(await screen.findByText(/could not access the system keychain/i)).toHaveAttribute('role', 'alert');
+    expect(screen.getByRole('button', { name: 'Remove key' })).toBeInTheDocument();
+  });
+
   it('says when the free model speaks, and why a key was refused', async () => {
     const user = userEvent.setup();
     vi.mocked(ipc.voiceKeySave).mockResolvedValueOnce([{ ok: true, error: null, hasCredit: false }, withSource('fishaudio')]);

@@ -989,7 +989,7 @@ describe('ChatProject render and jobs', () => {
     const user = userEvent.setup();
     vi.mocked(ipc.mediaRender).mockRejectedValue('nothing to render yet');
     render(<ChatProject chatId="c1" />);
-    await screen.findByText('Kenapa rupiah melemah?', { selector: 'span' });
+    await screen.findByRole('heading', { name: 'Kenapa rupiah melemah?', level: 1 });
     await user.click(screen.getByRole('button', { name: 'Render video' }));
     expect(await screen.findByRole('alert')).toHaveTextContent('Nothing to render yet. Ask your agent to make the video first');
     expect(screen.queryByText(/Couldn't render/)).not.toBeInTheDocument();

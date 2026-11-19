@@ -11,14 +11,17 @@ const HERE = path.dirname(fileURLToPath(import.meta.url));
 const TEMPLATE = path.join(HERE, '..', 'harness', 'hyperframes.html');
 
 /** npx next to the Node running this server: the user's own, found the way their terminal finds it. */
-export function npxPath(nodePath = process.execPath, platform = process.platform) {
-  const dir = path.dirname(nodePath);
-  return platform === 'win32' ? path.join(dir, 'npx.cmd') : path.join(dir, 'npx');
+export function npxCommand(nodePath = process.execPath, platform = process.platform) {
+  if (platform === 'win32') {
+    const cli = path.win32.join(path.win32.dirname(nodePath), 'node_modules', 'npm', 'bin', 'npx-cli.js');
+    return [nodePath, cli];
+  }
+  return [path.posix.join(path.posix.dirname(nodePath), 'npx')];
 }
 
-function run(cmd, args, cwd, timeoutMs) {
+function run([cmd, ...args], cwd, timeoutMs) {
   return new Promise((resolve, reject) => {
-    const child = spawn(cmd, args, { cwd, stdio: ['ignore', 'pipe', 'pipe'], shell: process.platform === 'win32' });
+    const child = spawn(cmd, args, { cwd, stdio: ['ignore', 'pipe', 'pipe'], windowsHide: true });
     let out = '';
     let err = '';
     child.stdout.on('data', (d) => (out += d));
@@ -56,7 +59,7 @@ export function hyperframesEngine(folder, { workDir }) {
       const dir = fs.mkdtempSync(path.join(workDir, 'still-'));
       try {
         const at = (frame / fps).toFixed(4);
-        await run(npxPath(), ['-y', HYPERFRAMES, 'snapshot', '.', '--at', at, '--no-end', '--output', dir], folder, 180_000);
+        await run([...npxCommand(), '-y', HYPERFRAMES, 'snapshot', '.', '--at', at, '--no-end', '--output', dir], folder, 180_000);
         const png = fs.readdirSync(dir).find((f) => f.toLowerCase().endsWith('.png'));
         if (!png) throw new Error('hyperframes snapshot wrote no picture');
         fs.copyFileSync(path.join(dir, png), output);

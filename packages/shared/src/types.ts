@@ -313,7 +313,7 @@ export interface VoiceCheck {
 export interface VoiceStatus {
   hasElevenKey: boolean;
   hasFishKey: boolean;
-  hasGeminiKey: boolean;
+  hasGeminiKey: boolean | null;
 }
 
 /** A provider preset: `other` is any OpenAI-compatible address the user types. */
