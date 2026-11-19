@@ -367,6 +367,53 @@ fn parse_modes(created: &Value) -> ModeState {
     }
 }
 
+/// How to take a session out of plan mode, where the agent only plans and never makes the video
+/// (Tayang has no mode menu to leave it). Agents report their mode as a `mode` config option
+/// (opencode: build / plan) or as `modes` (Claude: default, plan, ...).
+#[derive(Debug, Clone, PartialEq, Eq)]
+enum LeavePlan {
+    /// `session/set_config_option` with this config id and value.
+    Config { id: String, value: String },
+    /// `session/set_mode` with this mode id.
+    Mode(String),
+}
+
+/// The working mode to use instead of plan: `build` (opencode), else `default`, else the first other one.
+fn working_mode(ids: &[String]) -> Option<String> {
+    ["build", "default"]
+        .iter()
+        .find(|w| ids.iter().any(|m| m == *w))
+        .map(|w| w.to_string())
+        .or_else(|| ids.iter().find(|m| *m != "plan").cloned())
+}
+
+/// What to switch to when a `session/new` result says the session is in plan mode.
+fn leave_plan(created: &Value) -> Option<LeavePlan> {
+    let config = created.get("configOptions").and_then(Value::as_array).and_then(|opts| {
+        opts.iter().find(|o| {
+            o.get("category").and_then(Value::as_str) == Some("mode") || o.get("id").and_then(Value::as_str) == Some("mode")
+        })
+    });
+    if let Some(o) = config {
+        if o.get("currentValue").and_then(Value::as_str) != Some("plan") {
+            return None;
+        }
+        let values: Vec<String> = o
+            .get("options")
+            .and_then(Value::as_array)
+            .into_iter()
+            .flatten()
+            .filter_map(|x| x.get("value")?.as_str().map(str::to_string))
+            .collect();
+        return Some(LeavePlan::Config { id: o.get("id")?.as_str()?.to_string(), value: working_mode(&values)? });
+    }
+    let modes = parse_modes(created);
+    if modes.current.as_deref() != Some("plan") {
+        return None;
+    }
+    working_mode(&modes.available).map(LeavePlan::Mode)
+}
+
 /// The models a session offers. Agents report them two ways: a `model` session config option
 /// (`configOptions`, switched with `session/set_config_option`) or the older `models` field
 /// (switched with `session/set_model`); `config_id` says which.
@@ -876,7 +923,8 @@ impl SessionCore {
         Ok(json!({}))
     }
 
-    async fn handshake(&self, meta: Option<Value>) -> Result<()> {
+    /// Opens the session; the answer says how to leave plan mode when it opened in it.
+    async fn handshake(&self, meta: Option<Value>) -> Result<Option<LeavePlan>> {
         let init = self
             .rpc
             .request(
@@ -922,7 +970,25 @@ impl SessionCore {
         let _ = self.session_id.set(session_id.to_string());
         *self.modes.lock().unwrap() = parse_modes(&created);
         *self.models.lock().unwrap() = parse_models(&created);
-        Ok(())
+        Ok(leave_plan(&created))
+    }
+
+    /// Switches a session that opened in plan mode to the agent's working mode.
+    async fn leave_plan(&self, how: LeavePlan) -> Result<()> {
+        match how {
+            LeavePlan::Mode(id) => self.set_mode(&id).await,
+            LeavePlan::Config { id, value } => {
+                let sent = self.rpc.request(
+                    "session/set_config_option",
+                    json!({ "sessionId": self.session_id(), "configId": id, "value": value }),
+                );
+                match tokio::time::timeout(self.mode_timeout, sent).await {
+                    Err(_) => Err(AcpError("The agent did not answer the mode change".into())),
+                    Ok(Err(e)) => Err(AcpError(e.message)),
+                    Ok(Ok(_)) => Ok(()),
+                }
+            }
+        }
     }
 
     /// Tells the UI the session's models (nothing when the agent reports none).
@@ -1042,24 +1108,36 @@ impl SessionCore {
         self.session_id.get().map(String::as_str).unwrap_or_default()
     }
 
-    /// Runs one `session/prompt` turn and reports how it ended.
+    /// Runs one `session/prompt` turn and reports how it ended. When the agent refuses the turn
+    /// because the account can't use the model in use, the turn is sent again on another model
+    /// the agent offers (a few times at most).
     async fn run_turn(&self, prompt: Vec<Value>) {
-        let request = self.rpc.request("session/prompt", json!({ "sessionId": self.session_id(), "prompt": prompt }));
-        let res = match &self.error_log {
-            None => request.await,
-            Some(log) => {
-                let from = std::fs::metadata(log).map(|m| m.len()).unwrap_or(0);
-                tokio::select! {
-                    r = request => r,
-                    message = watch_error_log(log.clone(), from, self.session_id().to_string()) => {
-                        // The agent won't answer this turn: stop it, and say why.
-                        let _ = self.rpc.notify("session/cancel", json!({ "sessionId": self.session_id() }));
-                        self.permissions.cancel_session(self.uid);
-                        self.prompting.store(false, Ordering::SeqCst);
-                        self.emit(AgentUpdate::Error { message });
-                        return;
+        let mut refused: Vec<String> = Vec::new();
+        let mut retries = 0;
+        let res = loop {
+            let Some(res) = self.prompt_once(&prompt).await else { return };
+            match &res {
+                Err(e) if !e.is_closed() && e.code != AUTH_REQUIRED && is_unsupported_model(&e.message) => {
+                    if retries >= MODEL_RETRIES {
+                        break res;
                     }
+                    retries += 1;
+                    let next = {
+                        let models = self.models.lock().unwrap();
+                        let Some(m) = models.as_ref() else { break res };
+                        refused.extend(m.current.clone());
+                        refused.extend(refused_model_name(&e.message));
+                        fallback_model(m, &refused)
+                    };
+                    let Some(next) = next else { break res };
+                    if let Err(err) = self.set_model(&next).await {
+                        eprintln!("[agent {}] couldn't switch to the model {next}: {err}", self.chat_id);
+                        break res;
+                    }
+                    eprintln!("[agent {}] the model was refused ({}); trying {next}", self.chat_id, e.message);
+                    self.emit_models();
                 }
+                _ => break res,
             }
         };
         self.prompting.store(false, Ordering::SeqCst);
@@ -1080,6 +1158,28 @@ impl SessionCore {
             Err(e) => AgentUpdate::Error { message: format!("The agent reported an error: {}", e.message) },
         };
         self.emit(update);
+    }
+
+    /// Sends one `session/prompt`. `None` when the error log already ended the turn (and said why).
+    async fn prompt_once(&self, prompt: &[Value]) -> Option<std::result::Result<Value, RpcError>> {
+        let request = self.rpc.request("session/prompt", json!({ "sessionId": self.session_id(), "prompt": prompt }));
+        match &self.error_log {
+            None => Some(request.await),
+            Some(log) => {
+                let from = std::fs::metadata(log).map(|m| m.len()).unwrap_or(0);
+                tokio::select! {
+                    r = request => Some(r),
+                    message = watch_error_log(log.clone(), from, self.session_id().to_string()) => {
+                        // The agent won't answer this turn: stop it, and say why.
+                        let _ = self.rpc.notify("session/cancel", json!({ "sessionId": self.session_id() }));
+                        self.permissions.cancel_session(self.uid);
+                        self.prompting.store(false, Ordering::SeqCst);
+                        self.emit(AgentUpdate::Error { message });
+                        None
+                    }
+                }
+            }
+        }
     }
 
     /// Appends this turn's usage to the usage log. Best effort: a failed write is ignored.
@@ -1193,6 +1293,44 @@ pub fn opencode_turn_error(log: &str, session_id: &str) -> Option<String> {
     } else {
         format!("The agent's model failed: {detail}")
     })
+}
+
+/// How many other models a refused turn is tried on before the error is shown.
+const MODEL_RETRIES: usize = 3;
+
+/// The agent refused the turn because the account can't use the model, e.g. Codex signed in with
+/// ChatGPT: "The 'gpt-5.5' model is not supported when using Codex with a ChatGPT account".
+pub fn is_unsupported_model(message: &str) -> bool {
+    let m = message.to_lowercase();
+    m.contains("model_not_found")
+        || (m.contains("model")
+            && ["not supported", "does not exist", "not available", "do not have access", "don't have access"]
+                .iter()
+                .any(|p| m.contains(p)))
+}
+
+/// The model named in quotes in a refusal ("The 'gpt-5.5' model ...").
+fn refused_model_name(message: &str) -> Option<String> {
+    let start = message.find("The '")? + 5;
+    let len = message[start..].find('\'')?;
+    Some(message[start..start + len].to_string()).filter(|n| !n.is_empty())
+}
+
+/// Whether an offered model is one of the refused ones, also when the agent lists a model once
+/// per reasoning effort ("gpt-5.5/high", "gpt-5.5[high]").
+fn is_refused(value: &str, refused: &[String]) -> bool {
+    refused.iter().any(|r| {
+        value == r
+            || value.starts_with(&format!("{r}/"))
+            || value.starts_with(&format!("{r}["))
+            || value.ends_with(&format!("/{r}"))
+            || value.contains(&format!("/{r}/"))
+    })
+}
+
+/// The first offered model that isn't refused, to try the turn on.
+fn fallback_model(models: &ModelState, refused: &[String]) -> Option<String> {
+    models.options.iter().map(|o| o.value.clone()).find(|v| Some(v) != models.current.as_ref() && !is_refused(v, refused))
 }
 
 fn auth_message(e: &RpcError) -> String {
@@ -1361,7 +1499,13 @@ impl AgentSession {
             supervisor: Mutex::new(Some(supervisor)),
         };
         match tokio::time::timeout(start_timeout, session.core.handshake(options.meta)).await {
-            Ok(Ok(())) => {
+            Ok(Ok(plan)) => {
+                // A failed switch out of plan mode keeps the session rather than failing the start.
+                if let Some(how) = plan {
+                    if let Err(e) = session.core.leave_plan(how).await {
+                        eprintln!("[agent {}] couldn't leave plan mode: {e}", session.core.chat_id);
+                    }
+                }
                 // The model picked for this agent, when it still offers it; a failed switch keeps
                 // the agent's own default rather than failing the start.
                 if let Some(want) = options.model.as_deref() {
@@ -1674,6 +1818,49 @@ mod tests {
         assert_eq!(m.available, vec!["default".to_string(), "auto".to_string()]);
         assert_eq!(m.current.as_deref(), Some("default"));
         assert_eq!(parse_modes(&json!({})), ModeState::default());
+    }
+
+    #[test]
+    fn a_refused_model_falls_back_to_another_offered_one() {
+        let codex = "Internal error ({\"type\":\"error\",\"status\":400,\"error\":{\"type\":\"invalid_request_error\",\"message\":\"The 'gpt-5.5' model is not supported when using Codex with a ChatGPT account.\",\"code\":\"model_not_found\"}})";
+        assert!(is_unsupported_model(codex));
+        assert!(is_unsupported_model("The model `o9` does not exist or you do not have access to it."));
+        assert!(!is_unsupported_model("quota exceeded"));
+        assert!(!is_unsupported_model("The agent's model failed: overloaded"));
+        assert_eq!(refused_model_name(codex).as_deref(), Some("gpt-5.5"));
+        let pick = |current: &str, values: &[&str], refused: &[&str]| {
+            let m = ModelState {
+                config_id: None,
+                current: Some(current.into()),
+                options: values.iter().map(|v| ModelChoice { value: v.to_string(), name: v.to_string(), description: None }).collect(),
+            };
+            fallback_model(&m, &refused.iter().map(|r| r.to_string()).collect::<Vec<_>>())
+        };
+        assert_eq!(pick("gpt-5.5", &["gpt-5.5", "gpt-5.4"], &["gpt-5.5"]).as_deref(), Some("gpt-5.4"));
+        // A model listed once per reasoning effort is skipped as a whole.
+        assert_eq!(
+            pick("gpt-5.5/medium", &["gpt-5.5/low", "gpt-5.5/medium", "gpt-5.4/medium"], &["gpt-5.5/medium", "gpt-5.5"]).as_deref(),
+            Some("gpt-5.4/medium")
+        );
+        assert_eq!(pick("a", &["a"], &["a"]), None);
+    }
+
+    #[test]
+    fn plan_mode_is_left_for_the_working_mode() {
+        let opencode = json!({"configOptions": [
+            {"id": "model", "category": "model", "currentValue": "x", "options": [{"value": "x"}]},
+            {"id": "mode", "category": "mode", "currentValue": "plan", "options": [{"value": "build"}, {"value": "plan"}]}]});
+        assert_eq!(leave_plan(&opencode), Some(LeavePlan::Config { id: "mode".into(), value: "build".into() }));
+        let claude = json!({"modes": {"currentModeId": "plan",
+            "availableModes": [{"id": "default"}, {"id": "acceptEdits"}, {"id": "plan"}]}});
+        assert_eq!(leave_plan(&claude), Some(LeavePlan::Mode("default".into())));
+        let other = json!({"modes": {"currentModeId": "plan", "availableModes": [{"id": "plan"}, {"id": "write"}]}});
+        assert_eq!(leave_plan(&other), Some(LeavePlan::Mode("write".into())));
+        // Already working, or nothing to switch to: left alone.
+        let building = json!({"configOptions": [{"id": "mode", "category": "mode", "currentValue": "build", "options": [{"value": "build"}, {"value": "plan"}]}]});
+        assert_eq!(leave_plan(&building), None);
+        assert_eq!(leave_plan(&json!({"modes": {"currentModeId": "plan", "availableModes": [{"id": "plan"}]}})), None);
+        assert_eq!(leave_plan(&json!({})), None);
     }
 
     #[test]

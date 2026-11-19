@@ -248,6 +248,9 @@ export interface FileInfo {
   modifiedAt: string;
 }
 
+/** What renders encode the video with; `gpu` falls back to the CPU without a usable GPU encoder. */
+export type RenderAcceleration = 'gpu' | 'cpu';
+
 export interface Settings {
   workingFolder: string;
   defaultAgent: AgentId;
@@ -284,13 +287,15 @@ export interface Settings {
   apiProvider?: ApiProvider | null;
   /** Where voice-overs come from; missing: Tayang credits. API keys stay in the keychain. */
   voiceSource?: VoiceSource;
+  /** GPU or CPU encoding for renders, Tayang's and the agent's; missing: gpu. */
+  renderAcceleration?: RenderAcceleration;
 }
 
-/** Tayang credits, the user's own ElevenLabs or Fish Audio key, or VoiceStudio running on this computer. */
-export type VoiceSource = 'tayang' | 'elevenlabs' | 'fishaudio' | 'voicestudio' | 'gemini';
+/** Tayang credits, the user's own ElevenLabs, Fish Audio or Gemini key, or VoiceStudio running on this computer. */
+export type VoiceSource = 'tayang' | 'elevenlabs' | 'fishaudio' | 'gemini' | 'voicestudio';
 
 /** The voice sources that speak with the user's own API key. */
-export type VoiceKeySource = 'elevenlabs' | 'fishaudio';
+export type VoiceKeySource = 'elevenlabs' | 'fishaudio' | 'gemini';
 
 /** Why the user's own voice can't speak (the desktop's `VoiceError` codes). */
 export type VoiceErrorCode = 'no-key' | 'bad-key' | 'no-balance' | 'not-running' | 'too-long' | 'busy' | 'failed';
@@ -308,6 +313,7 @@ export interface VoiceCheck {
 export interface VoiceStatus {
   hasElevenKey: boolean;
   hasFishKey: boolean;
+  hasGeminiKey: boolean;
 }
 
 /** A provider preset: `other` is any OpenAI-compatible address the user types. */

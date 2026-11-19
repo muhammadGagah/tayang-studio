@@ -14,6 +14,7 @@ use tokio_tungstenite::{
     tungstenite::{protocol::WebSocketConfig, Error as WsError, Message},
 };
 
+pub(crate) const KEY_ACCOUNT: &str = "gemini-tts";
 const REST: &str = "https://generativelanguage.googleapis.com/v1beta";
 const LIVE: &str = "wss://generativelanguage.googleapis.com/ws/google.ai.generativelanguage.v1beta.GenerativeService.BidiGenerateContent";
 const LIVE_MODEL: &str = "gemini-3.8-live";
@@ -38,7 +39,7 @@ pub struct GeminiVoice {
 impl GeminiVoice {
     pub fn new(profile: &str) -> Self {
         Self {
-            account: format!("gemini-tts:{profile}"),
+            account: format!("{KEY_ACCOUNT}:{profile}"),
             client: reqwest::Client::builder()
                 .redirect(reqwest::redirect::Policy::none())
                 .connect_timeout(Duration::from_secs(12))
@@ -65,11 +66,7 @@ impl GeminiVoice {
         let _update = self.key_update.lock().await;
         let key = key.as_deref().map(str::trim);
         if let Some(key) = key {
-            if !(20..=256).contains(&key.len())
-                || !key
-                    .bytes()
-                    .all(|c| c.is_ascii_alphanumeric() || matches!(c, b'-' | b'_'))
-            {
+            if !valid_key(key) {
                 return Err("invalid-key");
             }
             let response = self
@@ -125,10 +122,22 @@ impl GeminiVoice {
             if !valid_voice(voice) {
                 return Err("invalid-voice");
             }
-            let audio = tokio::time::timeout(limit, live_audio(LIVE, &key, text, voice))
-                .await
-                .map_err(|_| "timeout")??;
-            (audio, true)
+            match tokio::time::timeout(limit, live_audio(LIVE, &key, text, voice)).await {
+                Ok(Ok(audio)) => (audio, true),
+                // Before a Live session opens, Flash TTS can still speak the default voice.
+                Ok(Err("live-unavailable")) if voice == "Kore" => {
+                    let client = self.client.as_ref().map_err(|_| "unavailable")?;
+                    let audio = crate::voice::gemini_speak(client, crate::voice::GEMINI_BASE, &key, text)
+                        .await.map_err(|e| match e {
+                            crate::voice::VoiceError::BadKey => "invalid-key",
+                            crate::voice::VoiceError::Busy | crate::voice::VoiceError::NoBalance => "rate-limited",
+                            _ => "unavailable",
+                        })?;
+                    (audio, false)
+                }
+                Ok(Err(error)) => return Err(error),
+                Err(_) => return Err("timeout"),
+            }
         };
         let folder = folder.to_owned();
         let media = media.clone();
@@ -165,6 +174,11 @@ impl GeminiVoice {
         let answer = serde_json::from_slice(&response.body).map_err(|_| "bad-audio")?;
         dialogue_audio(&answer)
     }
+}
+
+pub(crate) fn valid_key(key: &str) -> bool {
+    (20..=256).contains(&key.len())
+        && key.bytes().all(|c| c.is_ascii_alphanumeric() || matches!(c, b'-' | b'_'))
 }
 
 fn valid_voice(name: &str) -> bool {
@@ -253,10 +267,10 @@ async fn live_audio(endpoint: &str, key: &str, text: &str, voice: &str) -> Resul
         connect_async_with_config(url.as_str(), Some(config), false),
     )
     .await
-    .map_err(|_| "timeout")?
+    .map_err(|_| "live-unavailable")?
     .map_err(|e| match e {
-        WsError::Http(response) => http_error(response.status().as_u16()),
-        _ => "unavailable",
+        WsError::Http(response) if response.status().is_client_error() => http_error(response.status().as_u16()),
+        _ => "live-unavailable",
     })?;
     let setup = json!({"setup": {
         "model": format!("models/{LIVE_MODEL}"),
@@ -408,6 +422,16 @@ mod tests {
                 voice: "Puck".into(),
             },
         ]
+    }
+
+    #[test]
+    fn gemini_uses_the_existing_credential_for_both_voice_paths() {
+        let voice = GeminiVoice::new("profile");
+        let account = crate::types::VoiceSource::Gemini.key_account().unwrap();
+        assert_eq!(voice.account, format!("{account}:profile"));
+        assert_eq!(voice.account, "gemini-tts:profile");
+        assert!(!valid_key("invalid key"));
+        assert!(valid_key("AIza-valid_key_for_test"));
     }
 
     fn fake_wav() -> Vec<u8> {

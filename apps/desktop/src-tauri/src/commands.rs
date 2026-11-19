@@ -2058,6 +2058,37 @@ pub async fn show_video_in_folder(app: AppHandle, state: State<'_, AppState>, pr
     }
 }
 
+/// Deletes a video from Tayang > Videos: its project folder goes to the system trash (a folder
+/// already gone is fine) and the video leaves the list. Its chats stop and move to the archive with
+/// their messages; deleting them stays with the archive. Refused while the video is being made.
+#[tauri::command]
+pub async fn delete_video(state: State<'_, AppState>, project_id: String) -> CmdResult<()> {
+    let Some(project) = state.db.get_project(&project_id).map_err(err)? else {
+        return Ok(());
+    };
+    let busy = state.db.list_jobs().map_err(err)?.into_iter().any(|j| {
+        j.project_id.as_deref() == Some(project_id.as_str()) && j.status == crate::types::JobStatus::Working
+    });
+    if busy {
+        return Err("This video is still being made. Wait for it to finish, then delete it".into());
+    }
+    for chat in state.db.list_chats(Some(&project_id)).map_err(err)? {
+        let _ = state.acp.stop(&chat.id).await;
+    }
+    let folder = PathBuf::from(&project.folder);
+    if folder.exists() {
+        if !crate::projects::is_project_folder(&folder, &project.slug) {
+            return Err(format!("Tayang can only delete a video's own folder, not {}", folder.display()));
+        }
+        tauri::async_runtime::spawn_blocking(move || trash::delete(&folder))
+            .await
+            .map_err(err)?
+            .map_err(|e| format!("Couldn't move the video's folder to the trash: {e}"))?;
+    }
+    state.db.delete_video(&project_id).map_err(err)?;
+    Ok(())
+}
+
 /// The newest `*.mp4` where renders land (empty too), for spotting a render that is being written.
 #[tauri::command]
 pub async fn newest_video_info(state: State<'_, AppState>, project_id: String) -> CmdResult<Option<crate::types::FileInfo>> {
@@ -2130,6 +2161,79 @@ pub async fn media_extract_frame(
     .map_err(err)?
 }
 
+/// What the Preview panel needs to choose between the live preview and the latest render.
+#[derive(Debug, Clone, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PreviewStatus {
+    /// `hyperframes` / `remotion`, or `None` when the project can't be played live.
+    pub engine: Option<String>,
+    /// A code file changed after the newest render (always true with no render).
+    pub code_newer: bool,
+}
+
+#[tauri::command]
+pub async fn preview_status(state: State<'_, AppState>, project_id: String) -> CmdResult<PreviewStatus> {
+    let folder = project_folder(&state, &project_id)?;
+    tauri::async_runtime::spawn_blocking(move || {
+        let engine = crate::preview::detect_engine(&folder).map(str::to_string);
+        let rendered = media::latest_render(&folder).and_then(|v| std::fs::metadata(v).and_then(|m| m.modified()).ok());
+        let code_newer = engine.is_some() && crate::preview::code_newer_than(&folder, rendered);
+        PreviewStatus { engine, code_newer }
+    })
+    .await
+    .map_err(err)
+}
+
+/// Starts (or reuses) the project's live preview server; returns the harness URL for the panel's iframe.
+#[tauri::command]
+pub async fn preview_start(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    project_id: String,
+) -> CmdResult<crate::preview::Started> {
+    let folder = project_folder(&state, &project_id)?;
+    let engine = crate::preview::detect_engine(&folder).ok_or("This project can't be played live")?;
+    let resource_dir = app.path().resource_dir().ok();
+    let script = crate::preview::server_script(resource_dir.as_deref()).ok_or("The live preview is missing from this install")?;
+    // Starting waits for the server's ready line: off the async runtime.
+    tauri::async_runtime::spawn_blocking(move || {
+        app.state::<crate::preview::PreviewServers>().start(&project_id, &folder, engine, &script)
+    })
+    .await
+    .map_err(err)?
+}
+
+#[tauri::command]
+pub fn preview_stop(servers: State<'_, crate::preview::PreviewServers>, project_id: String) {
+    servers.stop(&project_id);
+}
+
+/// Frame `frame` of the live preview, drawn exactly as the render will be, saved where
+/// `media_extract_frame` saves frames.
+#[tauri::command]
+pub async fn preview_still(
+    state: State<'_, AppState>,
+    servers: State<'_, crate::preview::PreviewServers>,
+    project_id: String,
+    frame: u32,
+    fps: f64,
+) -> CmdResult<String> {
+    let folder = project_folder(&state, &project_id)?;
+    let ms = if fps > 0.0 { (frame as f64 / fps * 1000.0).round() as u64 } else { 0 };
+    let out = folder.join(".tayang").join("frames").join(format!("frame-{ms}.png"));
+    servers.still(&project_id, frame, &out).await.map(|p| path_string(&p))
+}
+
+/// The voice and subtitle layers under the Preview panel's film strip (see `layers`).
+#[tauri::command]
+pub async fn preview_layers(state: State<'_, AppState>, project_id: String) -> CmdResult<crate::layers::TimelineLayers> {
+    let folder = project_folder(&state, &project_id)?;
+    let tools = state.media.clone();
+    tauri::async_runtime::spawn_blocking(move || crate::layers::timeline_layers(&tools, &folder))
+        .await
+        .map_err(err)
+}
+
 #[tauri::command]
 pub async fn media_thumbnails(
     state: State<'_, AppState>,
@@ -2151,8 +2255,9 @@ pub async fn media_thumbnails(
 #[tauri::command]
 pub async fn media_render(state: State<'_, AppState>, project_id: String) -> CmdResult<String> {
     let folder = project_folder(&state, &project_id)?;
+    let gpu = state.db.get_settings(&state.home).render_acceleration == crate::types::RenderAcceleration::Gpu;
     tauri::async_runtime::spawn_blocking(move || {
-        media::render(&folder).map(|p| path_string(&p))
+        media::render(&folder, gpu).map(|p| path_string(&p))
     })
     .await
     .map_err(err)?
@@ -2221,7 +2326,8 @@ pub fn render_command(
         .duration_since(std::time::UNIX_EPOCH)
         .map(|d| d.as_secs())
         .unwrap_or(0);
-    Ok(media::render_command(&folder, now)?.map(|p| RenderCommand { install: p.install, render: p.render }))
+    let gpu = state.db.get_settings(&state.home).render_acceleration == crate::types::RenderAcceleration::Gpu;
+    Ok(media::render_command(&folder, now, gpu)?.map(|p| RenderCommand { install: p.install, render: p.render }))
 }
 
 /// Rewrites the project's AGENTS.md and CLAUDE.md (e.g. after a template could not be installed).
@@ -2290,7 +2396,7 @@ impl ApiKeys {
     }
 }
 
-// ---- the user's own voice (Fish Audio or VoiceStudio, see voice) ----
+// ---- the user's own voice (ElevenLabs, Fish Audio, Gemini or VoiceStudio, see voice) ----
 
 /// What Settings › Tools shows about the voice sources: which keys are saved.
 #[derive(serde::Serialize)]
@@ -2298,23 +2404,30 @@ impl ApiKeys {
 pub struct VoiceStatus {
     has_eleven_key: bool,
     has_fish_key: bool,
+    has_gemini_key: bool,
 }
 
 /// The keychain account of a source that has an API key, and its name in Settings.
 fn voice_key_source(source: crate::types::VoiceSource) -> CmdResult<(&'static str, &'static str)> {
     let account = source.key_account().ok_or("That voice source has no API key")?;
-    Ok((account, if source == crate::types::VoiceSource::Elevenlabs { "elevenlabs" } else { "fishaudio" }))
+    let name = match source {
+        crate::types::VoiceSource::Elevenlabs => "elevenlabs",
+        crate::types::VoiceSource::Gemini => "gemini",
+        _ => "fishaudio",
+    };
+    Ok((account, name))
 }
 
 #[tauri::command]
 pub async fn voice_status(keys: State<'_, ApiKeys>) -> CmdResult<VoiceStatus> {
-    let mut saved = [false, false];
-    for (i, source) in [crate::types::VoiceSource::Elevenlabs, crate::types::VoiceSource::Fishaudio].into_iter().enumerate() {
+    use crate::types::VoiceSource;
+    let mut saved = [false; 3];
+    for (i, source) in [VoiceSource::Elevenlabs, VoiceSource::Fishaudio, VoiceSource::Gemini].into_iter().enumerate() {
         if let Some(account) = source.key_account() {
             saved[i] = keys.get_account(account).await.ok().flatten().is_some_and(|k| !k.is_empty());
         }
     }
-    Ok(VoiceStatus { has_eleven_key: saved[0], has_fish_key: saved[1] })
+    Ok(VoiceStatus { has_eleven_key: saved[0], has_fish_key: saved[1], has_gemini_key: saved[2] })
 }
 
 /// Checks the source's API key (no `key`: the saved one) and, when it is good, saves it and makes

@@ -88,8 +88,101 @@ pub(crate) fn run_within(mut cmd: Command, what: &str, limit: std::time::Duratio
     if status.success() {
         Ok(std::process::Output { status, stdout, stderr })
     } else {
-        Err(format!("{what} failed: {}", String::from_utf8_lossy(&stderr).trim()))
+        Err(format!("{what} failed: {}", clean_output(&String::from_utf8_lossy(&stderr))))
     }
+}
+
+/// The error a render gives when the project has nothing to render: no `tayang.json` and no HyperFrames
+/// `index.html` (the agent hasn't built the video yet). The UI recognizes it.
+pub const NOTHING_TO_RENDER: &str = "nothing to render yet";
+
+/// Lines a tool prints that never explain a failure: npm's own notices and HyperFrames' telemetry notice.
+const NOISE: [&str; 5] = [
+    "npm notice",
+    "Hyperframes collects usage data",
+    "File paths and composition content are never collected",
+    "If you sign in to HeyGen",
+    "Disable anytime: hyperframes telemetry disable",
+];
+
+/// A tool's output as the user should read it: no colour codes, no noise lines, no runs of blank lines.
+pub fn clean_output(raw: &str) -> String {
+    let mut plain = String::with_capacity(raw.len());
+    let mut chars = raw.chars().peekable();
+    while let Some(c) = chars.next() {
+        if c == '\u{1b}' {
+            // CSI: ESC [ params final-letter.
+            if chars.peek() == Some(&'[') {
+                chars.next();
+                for x in chars.by_ref() {
+                    if x.is_ascii_alphabetic() {
+                        break;
+                    }
+                }
+            }
+            continue;
+        }
+        if c != '\r' {
+            plain.push(c);
+        }
+    }
+    let mut lines: Vec<&str> = Vec::new();
+    for line in plain.lines() {
+        let t = line.trim();
+        if NOISE.iter().any(|n| t.starts_with(n)) {
+            continue;
+        }
+        if t.is_empty() && lines.last().is_none_or(|l| l.trim().is_empty()) {
+            continue;
+        }
+        lines.push(line.trim_end());
+    }
+    lines.join("\n").trim().to_string()
+}
+
+/// The last lines of what a finished render printed, to say where its video may have gone.
+fn output_tail(out: &std::process::Output) -> String {
+    let all = format!("{}\n{}", String::from_utf8_lossy(&out.stdout), String::from_utf8_lossy(&out.stderr));
+    let clean = clean_output(&all);
+    let lines: Vec<&str> = clean.lines().collect();
+    lines[lines.len().saturating_sub(12)..].join("\n")
+}
+
+fn no_mp4(out: &std::process::Output) -> String {
+    match output_tail(out) {
+        t if t.is_empty() => "render finished but no mp4 was found".to_string(),
+        t => format!("render finished but no mp4 was found. The render printed:\n{t}"),
+    }
+}
+
+/// Remotion stopped because it has no browser to render frames with (its download never happened).
+fn is_no_browser(error: &str) -> bool {
+    error.contains("No browser found for rendering frames")
+}
+
+/// A `remotion` command run through a package runner (`npx remotion render ...`).
+fn is_remotion(argv: &[String]) -> bool {
+    argv.iter().take(3).any(|a| a == "remotion" || a.starts_with("@remotion/cli"))
+}
+
+/// The same runner's `remotion browser ensure`, which downloads Remotion's browser.
+fn browser_ensure(argv: &[String]) -> Vec<String> {
+    let at = argv.iter().position(|a| a == "remotion" || a.starts_with("@remotion/cli")).unwrap_or(0);
+    let mut v = argv[..=at].to_vec();
+    v.extend(["browser".to_string(), "ensure".to_string()]);
+    v
+}
+
+/// The render command using the computer's Google Chrome, unless it already names a browser.
+fn with_chrome(argv: &[String], chrome: &Path) -> Vec<String> {
+    if argv.iter().any(|a| a.starts_with("--browser-executable")) {
+        return argv.to_vec();
+    }
+    let mut v = argv.to_vec();
+    v.push(format!("--browser-executable={}", chrome.display()));
+    // Chrome itself only has the new headless mode, which Remotion calls chrome-for-testing.
+    v.push("--chrome-mode=chrome-for-testing".into());
+    v
 }
 
 fn run(mut cmd: Command, what: &str) -> Result<std::process::Output> {
@@ -97,8 +190,7 @@ fn run(mut cmd: Command, what: &str) -> Result<std::process::Output> {
     if out.status.success() {
         Ok(out)
     } else {
-        let stderr = String::from_utf8_lossy(&out.stderr);
-        Err(format!("{what} failed: {}", stderr.trim()))
+        Err(format!("{what} failed: {}", clean_output(&String::from_utf8_lossy(&out.stderr))))
     }
 }
 
@@ -218,7 +310,7 @@ pub const IMAGES_MAX_LIMIT: usize = 50;
 
 /// Every file in `folder` with its metadata, as read by the walk. Symlinks are never followed;
 /// dependency, git and dot folders are skipped; the walk stops 6 levels down and after 5 000 entries.
-fn walk_files(folder: &Path, mut visit: impl FnMut(PathBuf, std::fs::Metadata)) {
+pub(crate) fn walk_files(folder: &Path, mut visit: impl FnMut(PathBuf, std::fs::Metadata)) {
     let mut stack = vec![(folder.to_path_buf(), 0usize)];
     let mut seen = 0usize;
     while let Some((dir, depth)) = stack.pop() {
@@ -888,7 +980,32 @@ pub fn sweep_study_dirs(working: &Path) {
 
 /// Arguments for `npx` (pinned, non-interactive), run with `folder` as the working directory.
 /// `--output` pins the file into `<folder>/renders/`.
-pub fn render_args(folder: &Path) -> Vec<String> {
+/// HyperFrames' GPU encoding flag. It probes for a usable encoder (VideoToolbox, NVENC, QSV) and
+/// encodes on the CPU without one.
+pub const HYPERFRAMES_GPU: &str = "--gpu";
+/// Remotion's: hardware encoding where the codec and computer allow it, else the CPU.
+pub const REMOTION_GPU: &str = "--hardware-acceleration=if-possible";
+
+/// A render command with the encoding the user picked: a HyperFrames or Remotion render gets its
+/// GPU flag when `gpu`, and loses it when not; any other command (a template's own pipeline) is kept.
+pub fn accelerate(argv: &[String], gpu: bool) -> Vec<String> {
+    let tool = |name: &str| argv.iter().any(|a| a == name || a.starts_with(&format!("{name}@")) || a.ends_with(&format!("/{name}")));
+    let renders = argv.iter().any(|a| a == "render");
+    let (flag, is_flag): (&str, fn(&str) -> bool) = if renders && tool("hyperframes") {
+        (HYPERFRAMES_GPU, |a| a == "--gpu")
+    } else if renders && (tool("remotion") || tool("@remotion/cli")) {
+        (REMOTION_GPU, |a| a.starts_with("--hardware-acceleration"))
+    } else {
+        return argv.to_vec();
+    };
+    let mut out: Vec<String> = argv.iter().filter(|a| !is_flag(a)).cloned().collect();
+    if gpu {
+        out.push(flag.to_string());
+    }
+    out
+}
+
+pub fn render_args(folder: &Path, gpu: bool) -> Vec<String> {
     let secs = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .map(|d| d.as_secs())
@@ -902,14 +1019,43 @@ pub fn render_args(folder: &Path) -> Vec<String> {
         out.to_string_lossy().into_owned(),
         "--quiet".into(),
     ]
+    .into_iter()
+    .chain(gpu.then(|| HYPERFRAMES_GPU.to_string()))
+    .collect()
 }
 
 /// What `tayang.json` asks for (`engine` and `readme` are for the agent, not for rendering).
 #[derive(Debug, Clone, PartialEq, Eq, serde::Deserialize)]
 struct RenderManifest {
+    #[serde(deserialize_with = "argv")]
     render: Vec<String>,
-    #[serde(default)]
+    #[serde(default, deserialize_with = "optional_argv")]
     install: Option<Vec<String>>,
+}
+
+/// A command as a list of arguments, or written as one line (`"npm install"`), which agents sometimes do.
+#[derive(serde::Deserialize)]
+#[serde(untagged)]
+enum Argv {
+    List(Vec<String>),
+    Line(String),
+}
+
+impl From<Argv> for Vec<String> {
+    fn from(a: Argv) -> Self {
+        match a {
+            Argv::List(v) => v,
+            Argv::Line(l) => l.split_whitespace().map(str::to_string).collect(),
+        }
+    }
+}
+
+fn argv<'de, D: serde::Deserializer<'de>>(d: D) -> std::result::Result<Vec<String>, D::Error> {
+    <Argv as serde::Deserialize>::deserialize(d).map(Into::into)
+}
+
+fn optional_argv<'de, D: serde::Deserializer<'de>>(d: D) -> std::result::Result<Option<Vec<String>>, D::Error> {
+    <Option<Argv> as serde::Deserialize>::deserialize(d).map(|a| a.map(Into::into))
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -974,8 +1120,8 @@ pub fn render_plan(folder: &Path, unix_secs: u64) -> Result<Option<RenderPlan>> 
 }
 
 /// The render command to show the user: the `tayang.json` one, or `None` for the HyperFrames default.
-pub fn render_command(folder: &Path, unix_secs: u64) -> Result<Option<RenderPlan>> {
-    render_plan(folder, unix_secs)
+pub fn render_command(folder: &Path, unix_secs: u64, gpu: bool) -> Result<Option<RenderPlan>> {
+    Ok(render_plan(folder, unix_secs)?.map(|p| RenderPlan { render: accelerate(&p.render, gpu), ..p }))
 }
 
 /// Resolves argv[0] the way detection does (GUI apps can start with a minimal PATH).
@@ -993,30 +1139,55 @@ fn argv_command(argv: &[String], folder: &Path) -> Command {
     cmd
 }
 
-pub fn render(folder: &Path) -> Result<PathBuf> {
+/// Renders the project; `gpu` picks GPU encoding (falling back to the CPU without one).
+pub fn render(folder: &Path, gpu: bool) -> Result<PathBuf> {
     std::fs::create_dir_all(folder.join("renders")).map_err(|e| e.to_string())?;
     let secs = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .map(|d| d.as_secs())
         .unwrap_or(0);
-    if let Some(plan) = render_plan(folder, secs)? {
+    if let Some(plan) = render_command(folder, secs, gpu)? {
         if let Some(install) = &plan.install {
             run(argv_command(install, folder), "template install")?;
         }
-        run(argv_command(&plan.render, folder), "template render")?;
+        let done = match run(argv_command(&plan.render, folder), "template render") {
+            Err(e) if is_no_browser(&e) && is_remotion(&plan.render) => render_with_a_browser(folder, &plan.render, e)?,
+            r => r?,
+        };
         let out = folder.join(&plan.output);
         if out.exists() {
             return Ok(out);
         }
-        return latest_render(folder).ok_or_else(|| "render finished but no mp4 was found".to_string());
+        return latest_render(folder).ok_or_else(|| no_mp4(&done));
+    }
+    // HyperFrames renders the folder's index.html; without it the agent hasn't built anything yet.
+    if !folder.join("index.html").exists() {
+        return Err(NOTHING_TO_RENDER.to_string());
     }
     // GUI apps can start with a minimal PATH, so resolve npx the way detection does.
     let npx = crate::system::Exec::which(&crate::system::RealExec, "npx")
         .unwrap_or_else(|| PathBuf::from(if cfg!(windows) { "npx.cmd" } else { "npx" }));
     let mut cmd = command(npx);
-    cmd.args(render_args(folder)).current_dir(folder);
-    run(cmd, "hyperframes render")?;
-    latest_render(folder).ok_or_else(|| "render finished but no mp4 was found".to_string())
+    cmd.args(render_args(folder, gpu)).current_dir(folder);
+    let done = run(cmd, "hyperframes render")?;
+    latest_render(folder).ok_or_else(|| no_mp4(&done))
+}
+
+/// Remotion found no browser: download its own (`remotion browser ensure`) and try again, then fall back
+/// to the computer's Google Chrome. Each step runs only after the one before still found no browser.
+fn render_with_a_browser(folder: &Path, render: &[String], first: String) -> Result<std::process::Output> {
+    let mut last = first;
+    if run(argv_command(&browser_ensure(render), folder), "remotion browser download").is_ok() {
+        match run(argv_command(render, folder), "template render") {
+            Err(e) if is_no_browser(&e) => last = e,
+            r => return r,
+        }
+    }
+    let os = crate::system::os_kind();
+    match crate::system::chrome_executable(&crate::system::RealExec, os) {
+        Some(chrome) => run(argv_command(&with_chrome(render, &chrome), folder), "template render"),
+        None => Err(last),
+    }
 }
 
 #[cfg(test)]
@@ -1960,11 +2131,32 @@ mod tests {
     #[test]
     fn render_args_sets_output_into_renders() {
         let folder = Path::new("proj dir");
-        let args = render_args(folder);
+        let args = render_args(folder, false);
         assert_eq!(&args[..3], ["-y", "hyperframes@0.9.10", "render"]);
         let i = args.iter().position(|a| a == "--output").unwrap();
         assert!(Path::new(&args[i + 1]).starts_with(folder.join("renders")));
         assert!(args[i + 1].ends_with(".mp4"));
+        assert!(!args.contains(&"--gpu".to_string()));
+        assert_eq!(render_args(folder, true).last().unwrap(), "--gpu");
+    }
+
+    #[test]
+    fn accelerate_adds_or_drops_the_gpu_flag_of_hyperframes_and_remotion_renders() {
+        let v = |a: &[&str]| a.iter().map(|s| s.to_string()).collect::<Vec<_>>();
+        let hf = v(&["npx", "-y", "hyperframes@0.9.10", "render", "--output", "{output}"]);
+        assert_eq!(accelerate(&hf, true).last().unwrap(), "--gpu");
+        assert_eq!(accelerate(&accelerate(&hf, true), true).iter().filter(|a| *a == "--gpu").count(), 1);
+        assert_eq!(accelerate(&v(&["npx", "hyperframes", "render", "--gpu"]), false), v(&["npx", "hyperframes", "render"]));
+
+        let rm = v(&["npx", "remotion", "render", "src/index.ts", "Geo", "{output}", "--gl=angle"]);
+        assert_eq!(accelerate(&rm, true).last().unwrap(), "--hardware-acceleration=if-possible");
+        assert_eq!(accelerate(&v(&["npx", "remotion", "render", "--hardware-acceleration=required"]), true), v(&["npx", "remotion", "render", "--hardware-acceleration=if-possible"]));
+        assert_eq!(accelerate(&v(&["node_modules/.bin/remotion", "render", "x"]), false), v(&["node_modules/.bin/remotion", "render", "x"]));
+        assert_eq!(accelerate(&v(&["node_modules/.bin/remotion", "render", "x"]), true).last().unwrap(), REMOTION_GPU);
+
+        // Not a render, or another tool: left alone.
+        assert_eq!(accelerate(&v(&["npx", "remotion", "still", "x"]), true), v(&["npx", "remotion", "still", "x"]));
+        assert_eq!(accelerate(&v(&["python3", "pipeline.py", "render"]), true), v(&["python3", "pipeline.py", "render"]));
     }
 
     #[test]
@@ -1996,21 +2188,80 @@ mod tests {
         let tmp = tempfile::tempdir().unwrap();
         let folder = tmp.path().join("v");
         std::fs::create_dir_all(&folder).unwrap();
-        assert_eq!(render_command(&folder, 5).unwrap(), None);
+        assert_eq!(render_command(&folder, 5, false).unwrap(), None);
         std::fs::write(folder.join("tayang.json"), r#"{"render":["npx","remotion","render","{output}"]}"#).unwrap();
         let out = Path::new("renders").join("v-5.mp4");
-        let plan = render_command(&folder, 5).unwrap().unwrap();
+        let plan = render_command(&folder, 5, false).unwrap().unwrap();
         assert_eq!(plan.render, ["npx", "remotion", "render", out.to_str().unwrap()]);
+        let gpu = render_command(&folder, 5, true).unwrap().unwrap();
+        assert_eq!(gpu.render, ["npx", "remotion", "render", out.to_str().unwrap(), REMOTION_GPU]);
         assert_eq!(plan.install, None);
         std::fs::write(
             folder.join("tayang.json"),
             r#"{"render":["npx","remotion","render","{output}"],"install":["npm","install"]}"#,
         )
         .unwrap();
-        let plan = render_command(&folder, 5).unwrap().unwrap();
+        let plan = render_command(&folder, 5, false).unwrap().unwrap();
         assert_eq!(plan.install, Some(vec!["npm".to_string(), "install".to_string()]));
         std::fs::create_dir_all(folder.join("node_modules")).unwrap();
-        assert_eq!(render_command(&folder, 5).unwrap().unwrap().install, None, "installed already");
+        assert_eq!(render_command(&folder, 5, false).unwrap().unwrap().install, None, "installed already");
+    }
+
+    #[test]
+    fn render_output_keeps_only_what_explains_the_failure() {
+        let raw = "npm notice run npx\nnpm notice run ^\"hyperframes^\" render --quiet\n\n  Hyperframes collects usage data to improve the tool, anonymous until you sign in.\n  File paths and composition content are never collected.\n  If you sign in to HeyGen, your account (email and username) is linked to your usage.\n\n  Disable anytime: hyperframes telemetry disable\n\n\n\u{1b}[31mError: Timeout (30000ms)\u{1b}[39m exceeded\r\n";
+        assert_eq!(clean_output(raw), "Error: Timeout (30000ms) exceeded");
+        assert_eq!(clean_output("  \n"), "");
+    }
+
+    #[test]
+    fn a_folder_with_nothing_to_render_says_so() {
+        let tmp = tempfile::tempdir().unwrap();
+        assert_eq!(render(tmp.path(), false).unwrap_err(), NOTHING_TO_RENDER);
+    }
+
+    #[test]
+    fn install_may_be_written_as_one_command_line() {
+        let tmp = tempfile::tempdir().unwrap();
+        std::fs::write(tmp.path().join("tayang.json"), r#"{"render":"npx remotion render {output}","install":"npm install"}"#).unwrap();
+        let plan = render_plan(tmp.path(), 1).unwrap().unwrap();
+        assert_eq!(plan.install, Some(vec!["npm".to_string(), "install".to_string()]));
+        assert_eq!(&plan.render[..3], ["npx", "remotion", "render"]);
+        assert!(plan.render[3].ends_with(".mp4"));
+    }
+
+    #[test]
+    fn a_render_without_an_mp4_says_what_the_tool_printed() {
+        if crate::system::Exec::which(&crate::system::RealExec, "node").is_none() {
+            eprintln!("skipping: node not found");
+            return;
+        }
+        let tmp = tempfile::tempdir().unwrap();
+        std::fs::write(
+            tmp.path().join("tayang.json"),
+            r#"{"render":["node","-e","console.log('Rendered to elsewhere/video.mp4')"]}"#,
+        )
+        .unwrap();
+        let e = render(tmp.path(), false).unwrap_err();
+        assert!(e.starts_with("render finished but no mp4 was found"), "{e}");
+        assert!(e.contains("Rendered to elsewhere/video.mp4"), "{e}");
+    }
+
+    #[test]
+    fn remotion_without_its_browser_can_use_chrome() {
+        let e = "template render failed: TypeError: No browser found for rendering frames! Please open a GitHub issue";
+        assert!(is_no_browser(e));
+        assert!(!is_no_browser("template render failed: boom"));
+        let argv: Vec<String> = ["npx", "remotion", "render", "src/index.ts", "Main", "out.mp4"].map(String::from).to_vec();
+        assert!(is_remotion(&argv));
+        assert!(!is_remotion(&["npx".to_string(), "hyperframes".to_string()]));
+        let with = with_chrome(&argv, Path::new("/c/chrome"));
+        assert_eq!(&with[..6], &argv[..]);
+        assert_eq!(&with[6..], ["--browser-executable=/c/chrome", "--chrome-mode=chrome-for-testing"]);
+        // A command that already names a browser is left alone.
+        let named: Vec<String> = [&argv[..], &["--browser-executable=/x".to_string()]].concat();
+        assert_eq!(with_chrome(&named, Path::new("/c/chrome")), named);
+        assert_eq!(&browser_ensure(&argv), &["npx", "remotion", "browser", "ensure"]);
     }
 
     #[test]
@@ -2036,7 +2287,7 @@ mod tests {
             r#"{"render":["node","-e","require('fs').writeFileSync(process.argv[1],'x')","{output}"]}"#,
         )
         .unwrap();
-        let out = render(&folder).unwrap();
+        let out = render(&folder, false).unwrap();
         assert!(out.exists());
         assert!(out.starts_with(folder.join("renders")));
     }

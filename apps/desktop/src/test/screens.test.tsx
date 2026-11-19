@@ -20,6 +20,7 @@ vi.mock('@/lib/ipc', () => ({
   listProjects: vi.fn(),
   videoThumbnail: vi.fn().mockResolvedValue(null),
   showVideoInFolder: vi.fn().mockResolvedValue(undefined),
+  deleteVideo: vi.fn().mockResolvedValue(undefined),
   updateProject: vi.fn(),
   setSchedule: vi.fn(),
   setPosted: vi.fn(),
@@ -49,9 +50,9 @@ vi.mock('@/lib/ipc', () => ({
   agentRespondPermission: vi.fn(),
   getSettings: vi.fn(),
   updateSettings: vi.fn(),
-  voiceStatus: vi.fn().mockResolvedValue({ hasElevenKey: false, hasFishKey: false }),
-  geminiKeySaved: vi.fn().mockResolvedValue(false),
-  updateGeminiKey: vi.fn().mockResolvedValue(undefined),
+  voiceStatus: vi.fn().mockResolvedValue({ hasElevenKey: false, hasFishKey: false, hasGeminiKey: false }),
+  voiceKeySave: vi.fn(),
+  voiceKeyClear: vi.fn(),
   openverseCredentialsSaved: vi.fn().mockResolvedValue(false),
   updateOpenverseCredentials: vi.fn().mockResolvedValue(undefined),
   pickFolder: vi.fn(),
@@ -193,6 +194,33 @@ describe('Videos', () => {
     expect(ipc.showVideoInFolder).toHaveBeenCalledWith('a');
     await userEvent.click(screen.getByRole('button', { name: 'Show Draft one in its folder' }));
     expect(ipc.showVideoInFolder).toHaveBeenCalledWith('b');
+  });
+
+  it('deletes a video after asking, and it leaves the list', async () => {
+    vi.mocked(ipc.listProjects).mockResolvedValue([project('a', 'Old one', 'rendered'), project('b', 'Kept one', 'draft')]);
+    render(<Videos />);
+    await userEvent.click(await screen.findByRole('button', { name: 'Delete Old one' }));
+    const dialog = await screen.findByRole('dialog');
+    expect(within(dialog).getByText(/moves its folder to the trash/)).toBeInTheDocument();
+    // Cancelling deletes nothing.
+    await userEvent.click(within(dialog).getByRole('button', { name: 'Cancel' }));
+    expect(ipc.deleteVideo).not.toHaveBeenCalled();
+    await userEvent.click(screen.getByRole('button', { name: 'Delete Old one' }));
+    vi.mocked(ipc.listProjects).mockResolvedValue([project('b', 'Kept one', 'draft')]);
+    await userEvent.click(within(await screen.findByRole('dialog')).getByRole('button', { name: 'Delete video' }));
+    expect(ipc.deleteVideo).toHaveBeenCalledWith('a');
+    await waitFor(() => expect(screen.queryByText('Old one')).not.toBeInTheDocument());
+    expect(screen.getAllByText('Kept one').length).toBeGreaterThan(0);
+  });
+
+  it('keeps the video and says why when deleting fails', async () => {
+    vi.mocked(ipc.listProjects).mockResolvedValue([project('a', 'Busy one', 'building')]);
+    vi.mocked(ipc.deleteVideo).mockRejectedValueOnce('This video is still being made. Wait for it to finish, then delete it');
+    render(<Videos />);
+    await userEvent.click(await screen.findByRole('button', { name: 'Delete Busy one' }));
+    await userEvent.click(within(await screen.findByRole('dialog')).getByRole('button', { name: 'Delete video' }));
+    expect(await screen.findByRole('alert')).toHaveTextContent('still being made');
+    expect(screen.getAllByText('Busy one').length).toBeGreaterThan(0);
   });
 
   it('shows the empty state', async () => {
@@ -1782,33 +1810,31 @@ describe('Settings', () => {
     expect(screen.queryByLabelText('Gemini API key')).toBeNull();
     act(() => voiceSource.focus());
     await user.keyboard('{Enter}');
-    await screen.findByRole('menuitemradio', { name: 'Gemini TTS' });
+    await screen.findByRole('menuitemradio', { name: /Gemini TTS/ });
     await user.keyboard('{End}{Enter}');
-    await waitFor(() => expect(ipc.updateSettings).toHaveBeenCalledWith({ voiceSource: 'gemini' }));
-    await screen.findByText('Add an API key to use Gemini TTS.');
-    const key = screen.getByLabelText('Gemini API key');
+    const key = screen.getByLabelText('Gemini TTS API key');
     expect(key).toHaveAttribute('type', 'password');
+    await user.tab();
     await user.tab();
     expect(key).toHaveFocus();
     await user.keyboard('test-gemini-key');
-    vi.mocked(ipc.updateGeminiKey).mockRejectedValueOnce('invalid-key');
+    const saved = { ...settings, voiceSource: 'gemini' as const };
+    vi.mocked(ipc.voiceKeySave).mockResolvedValueOnce([{ ok: false, error: 'bad-key', hasCredit: null }, settings]);
     await user.keyboard('{Enter}');
-    const error = 'Google rejected the key. Check the key and its Gemini API permissions.';
-    expect(await screen.findByText(error)).toHaveAttribute('role', 'alert');
-    expect(key).toHaveAccessibleDescription(expect.stringContaining(error));
+    expect(key).toHaveAccessibleDescription(expect.stringContaining('refused this key'));
     expect(key).toHaveAttribute('aria-invalid', 'true');
+    vi.mocked(ipc.voiceKeySave).mockResolvedValueOnce([{ ok: true, error: null, hasCredit: null }, saved]);
     await user.keyboard('{Enter}');
-    expect(ipc.updateGeminiKey).toHaveBeenLastCalledWith('test-gemini-key');
-    expect(await screen.findByText('Gemini API key is saved in the system keychain.')).toHaveAttribute('role', 'status');
+    expect(ipc.voiceKeySave).toHaveBeenLastCalledWith('gemini', 'test-gemini-key');
     expect(key).toHaveValue('');
     await user.tab();
     await user.tab();
-    const remove = screen.getByRole('button', { name: 'Remove Gemini API key' });
+    const remove = screen.getByRole('button', { name: 'Remove key' });
     expect(remove).toHaveFocus();
+    vi.mocked(ipc.voiceKeyClear).mockResolvedValueOnce({ ...saved, voiceSource: 'tayang' });
     await user.keyboard('{Enter}');
-    expect(ipc.updateGeminiKey).toHaveBeenLastCalledWith(null);
-    expect(await screen.findByText('Add an API key to use Gemini TTS.')).toHaveAttribute('role', 'status');
-    expect(remove).toHaveFocus();
+    expect(ipc.voiceKeyClear).toHaveBeenLastCalledWith('gemini');
+    expect(voiceSource).toHaveFocus();
   });
 
   it('accepts and removes Openverse credentials with labeled keyboard controls and status feedback', async () => {
@@ -1976,6 +2002,16 @@ describe('Settings', () => {
     await userEvent.click(await screen.findByRole('switch', { name: 'Keep Tayang running in the background' }));
     await waitFor(() => expect(ipc.updateSettings).toHaveBeenCalledWith({ backgroundMode: false, openAtLogin: false }));
     expect(autostart.disable).toHaveBeenCalledTimes(1);
+  });
+
+  it('picks GPU or CPU encoding for renders under Render, GPU when never set', async () => {
+    openSettingsTab('render');
+    render(<SettingsScreen />);
+    const encoding = await screen.findByRole('radiogroup', { name: 'Video encoding' });
+    expect(within(encoding).getByRole('radio', { name: 'GPU' })).toBeChecked();
+    expect(screen.getByText(/falls back to the CPU/)).toBeInTheDocument();
+    await userEvent.click(within(encoding).getByRole('radio', { name: 'CPU' }));
+    await waitFor(() => expect(ipc.updateSettings).toHaveBeenCalledWith({ renderAcceleration: 'cpu' }));
   });
 
   it('toggles frameCheck through updateSettings', async () => {

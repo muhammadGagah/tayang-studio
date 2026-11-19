@@ -403,7 +403,7 @@ pub fn parse_version(raw: &str) -> Option<String> {
     None
 }
 
-fn os_kind() -> OsKind {
+pub(crate) fn os_kind() -> OsKind {
     if cfg!(target_os = "macos") {
         OsKind::Macos
     } else if cfg!(target_os = "windows") {
@@ -468,7 +468,9 @@ const AGENT_DEFS: [AgentDef; 5] = [
     ),
     (AgentId::Opencode, "OpenCode", "opencode", &["opencode", "acp"]),
     (AgentId::Gemini, "Gemini CLI", "gemini", &["gemini", "--experimental-acp"]),
-    (AgentId::Codex, "Codex", "codex", &["npx", "-y", "@zed-industries/codex-acp"]),
+    // `@latest`: OpenAI refuses every model to an outdated Codex signed in with ChatGPT, and npx
+    // would otherwise keep running the copy it cached first. (@zed-industries/codex-acp is retired.)
+    (AgentId::Codex, "Codex", "codex", &["npx", "-y", "@agentclientprotocol/codex-acp@latest"]),
     // Antigravity CLI speaks ACP itself since 1.5.0; its installer puts `agy` in ~/.local/bin.
     (AgentId::Antigravity, "Antigravity CLI", "agy", &["agy", "acp"]),
 ];
@@ -570,18 +572,22 @@ pub fn detect_agents(exec: &dyn Exec) -> Vec<AgentInfo> {
 }
 
 fn chrome_found(exec: &dyn Exec, os: OsKind) -> bool {
+    chrome_executable(exec, os).is_some()
+}
+
+/// Google Chrome's program on this computer, where Tayang looks for it.
+pub fn chrome_executable(exec: &dyn Exec, os: OsKind) -> Option<PathBuf> {
     match os {
-        OsKind::Macos => Path::new("/Applications/Google Chrome.app").exists(),
+        OsKind::Macos => Some(PathBuf::from("/Applications/Google Chrome.app/Contents/MacOS/Google Chrome")).filter(|p| p.exists()),
         OsKind::Windows => {
             let rel = r"Google\Chrome\Application\chrome.exe";
             ["ProgramFiles", "ProgramFiles(x86)", "LocalAppData"]
                 .iter()
                 .filter_map(std::env::var_os)
-                .any(|base| PathBuf::from(base).join(rel).exists())
+                .map(|base| PathBuf::from(base).join(rel))
+                .find(|p| p.exists())
         }
-        OsKind::Linux => ["google-chrome", "chromium", "chromium-browser"]
-            .iter()
-            .any(|b| exec.which(b).is_some()),
+        OsKind::Linux => ["google-chrome", "chromium", "chromium-browser"].iter().find_map(|b| exec.which(b)),
     }
 }
 

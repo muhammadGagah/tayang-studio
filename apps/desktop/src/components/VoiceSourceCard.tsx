@@ -11,7 +11,7 @@ import { Button } from '@/components/Button';
 import { lacksVoice } from '@/components/UpgradeCard';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuRadioGroup, DropdownMenuRadioItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
 import { Input } from '@/components/ui/input';
-import { geminiKeySaved, updateGeminiKey, updateSettings, voiceKeyClear, voiceKeySave, voiceStatus, voiceStudioCheck } from '@/lib/ipc';
+import { updateSettings, voiceKeyClear, voiceKeySave, voiceStatus, voiceStudioCheck } from '@/lib/ipc';
 import { cn } from '@/lib/utils';
 import { useApp } from '@/state/app';
 import { useAuth } from '@/state/auth';
@@ -30,8 +30,9 @@ const SOURCES: { id: VoiceSource; name: string; logo: string }[] = [
 const KEYS_URL: Record<VoiceKeySource, string> = {
   elevenlabs: 'https://elevenlabs.io/app/settings/api-keys',
   fishaudio: 'https://fish.audio/app/api-keys',
+  gemini: 'https://aistudio.google.com/apikey',
 };
-const isKeySource = (s: VoiceSource): s is VoiceKeySource => s === 'elevenlabs' || s === 'fishaudio';
+const isKeySource = (s: VoiceSource): s is VoiceKeySource => s in KEYS_URL;
 const sourceOf = (id: VoiceSource) => SOURCES.find((s) => s.id === id) ?? SOURCES[0]!;
 
 type ErrorKey = 'noKey' | 'badKey' | 'noBalance' | 'notRunning' | 'busy' | 'failed';
@@ -85,7 +86,7 @@ function TayangPanel() {
   );
 }
 
-/** ElevenLabs or Fish Audio: the API key, and what trying it said. */
+/** ElevenLabs, Fish Audio or Gemini: the API key, and what trying it said. */
 function KeyPanel({ source, active, inUse, hasKey, onHasKey, onSaved, onBusy, onRemove }: {
   source: VoiceKeySource;
   active: boolean;
@@ -161,7 +162,7 @@ function KeyPanel({ source, active, inUse, hasKey, onHasKey, onSaved, onBusy, on
       event.preventDefault();
       void save();
     }}>
-      <span id="voice-key-hint" className="text-[13px] text-text-2">{t('voice.keyText', { name })}</span>
+      <span id="voice-key-hint" className="text-[13px] text-text-2">{t('voice.keyText', { name })}{source === 'gemini' && ` ${t('settings.geminiApiKeyHint')} ${t('voice.geminiNote')}`}</span>
       <div className="flex flex-wrap items-center gap-2">
         <label htmlFor={`${source}-key`} className="text-[13px] text-[#D9D9D9]">
           {t('voice.keyLabel', { name })}
@@ -201,75 +202,9 @@ function KeyPanel({ source, active, inUse, hasKey, onHasKey, onSaved, onBusy, on
   );
 }
 
-function GeminiKey() {
-  const { t } = useTranslation();
-  const form = useRef<HTMLFormElement>(null);
-  const [saved, setSaved] = useState<boolean | null>(null);
-  const [busy, setBusy] = useState(true);
-  const [errorCode, setErrorCode] = useState('');
-
-  useEffect(() => {
-    let gone = false;
-    geminiKeySaved().then((value) => { if (!gone) setSaved(value); })
-      .catch(() => { if (!gone) setErrorCode('keychain'); })
-      .finally(() => { if (!gone) setBusy(false); });
-    return () => { gone = true; };
-  }, []);
-
-  const update = async (key: string | null) => {
-    if (busy || (key === null && saved === false)) return;
-    setBusy(true);
-    setErrorCode('');
-    try {
-      await updateGeminiKey(key);
-      form.current?.reset();
-      setSaved(key !== null);
-    } catch (cause) {
-      setErrorCode(String(cause));
-    } finally {
-      setBusy(false);
-    }
-  };
-  const invalid = errorCode === 'invalid-key';
-  const errors = {
-    'invalid-key': t('settings.geminiInvalidKey'),
-    keychain: t('settings.geminiKeychainError'),
-    'rate-limited': t('settings.geminiRateLimited'),
-  };
-
-  return (
-    <form ref={form} autoComplete="off" className="grid min-w-0 gap-2" onSubmit={(event) => {
-      event.preventDefault();
-      void update(String(new FormData(event.currentTarget).get('geminiKey') ?? ''));
-    }}>
-      <label htmlFor="gemini-key" className="text-sm">{t('settings.geminiApiKey')}</label>
-      <p id="gemini-key-hint" className="m-0 text-xs text-text-3">{t('settings.geminiApiKeyHint')}</p>
-      <Input id="gemini-key" name="geminiKey" type="password" autoComplete="off" required maxLength={256} readOnly={busy}
-        className="border-text-3" aria-invalid={invalid || undefined}
-        aria-describedby={invalid ? 'gemini-key-hint gemini-key-error' : 'gemini-key-hint'}
-        onChange={() => { if (invalid) setErrorCode(''); }} />
-      <div className="flex flex-wrap gap-2">
-        <Button type="submit" variant="secondary" aria-disabled={busy} className="aria-disabled:opacity-50"
-          onClick={(event) => { if (busy) event.preventDefault(); }}>
-          {t('settings.geminiSaveKey')}
-        </Button>
-        <Button type="button" variant="secondary" aria-disabled={busy || saved === false} className="aria-disabled:opacity-50" onClick={() => void update(null)}>
-          {t('settings.geminiRemoveKey')}
-        </Button>
-      </div>
-      <p role="status" className="m-0 text-xs text-text-3">
-        {busy ? t('settings.geminiChecking') : errorCode || saved === null ? null : t(saved ? 'settings.geminiKeySaved' : 'settings.geminiKeyMissing')}
-      </p>
-      <p id="gemini-key-error" role="alert" className="m-0 text-sm text-destructive">
-        {errorCode && (errors[errorCode as keyof typeof errors] ?? t('settings.geminiKeyError'))}
-      </p>
-    </form>
-  );
-}
-
 /**
- * Settings › Tools: where voice-overs come from. Tayang credits, the user's own ElevenLabs or Fish
- * Audio key, or VoiceStudio on this computer. Agents always call Tayang's /voice; this picks who speaks.
+ * Settings › Tools: where voice-overs come from. Tayang credits, the user's own ElevenLabs, Fish
+ * Audio or Gemini key, or VoiceStudio on this computer. Agents always call Tayang's /voice; this picks who speaks.
  */
 export function VoiceSourceCard({ settings, onSaved }: { settings: Settings; onSaved(s: Settings): void }) {
   const { t } = useTranslation();
@@ -277,7 +212,7 @@ export function VoiceSourceCard({ settings, onSaved }: { settings: Settings; onS
   /** A source with a key that was picked to set up its key: its panel is open even while another source is in use. */
   const [setup, setSetup] = useState<VoiceKeySource | null>(null);
   const shown: VoiceSource = setup ?? active;
-  const [hasKey, setHasKey] = useState<Record<VoiceKeySource, boolean>>({ elevenlabs: false, fishaudio: false });
+  const [hasKey, setHasKey] = useState<Record<VoiceKeySource, boolean>>({ elevenlabs: false, fishaudio: false, gemini: false });
   const trigger = useRef<HTMLButtonElement>(null);
   const panel = useRef<HTMLDivElement>(null);
   const [menuOpen, setMenuOpen] = useState(false);
@@ -288,7 +223,7 @@ export function VoiceSourceCard({ settings, onSaved }: { settings: Settings; onS
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    voiceStatus().then((s) => setHasKey({ elevenlabs: s.hasElevenKey, fishaudio: s.hasFishKey }), () => {});
+    voiceStatus().then((s) => setHasKey({ elevenlabs: s.hasElevenKey, fishaudio: s.hasFishKey, gemini: s.hasGeminiKey }), () => {});
   }, []);
 
   const checkStudio = () => {
@@ -370,7 +305,6 @@ export function VoiceSourceCard({ settings, onSaved }: { settings: Settings; onS
 
       <div ref={panel} className="flex flex-col gap-3 border-t border-[#222] px-4 py-3">
         {shown === 'tayang' && <TayangPanel />}
-        {shown === 'gemini' && <GeminiKey />}
 
         {isKeySource(shown) && (
           <KeyPanel

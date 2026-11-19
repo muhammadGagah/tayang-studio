@@ -50,7 +50,20 @@ let sessionMeta = null;
 let clientCaps = {};
 let cancelWaiter = null;
 let cancelled = false;
-let currentMode = "default";
+// --start-in-plan: `modes` starts in "plan" (Claude with defaultMode plan). --config-mode-plan: no `modes`;
+// a `mode` config option (build / plan) starts in "plan", as opencode reports its agents.
+let currentMode = process.argv.includes("--start-in-plan") || process.argv.includes("--config-mode-plan") ? "plan" : "default";
+const modeOption = () => ({
+  id: "mode",
+  name: "Session Mode",
+  category: "mode",
+  type: "select",
+  currentValue: currentMode,
+  options: [
+    { value: "build", name: "build" },
+    { value: "plan", name: "plan" },
+  ],
+});
 // --config-models: session/new reports a `model` config option (set with session/set_config_option);
 // --legacy-models: the older `models` field (set with session/set_model). Prompt "model" reports it.
 let currentModel = "fast";
@@ -267,16 +280,17 @@ function handle(msg) {
       sessionId = "sess-1";
       {
         const result = { sessionId };
-        if (!process.argv.includes("--no-modes")) {
+        if (!process.argv.includes("--no-modes") && !process.argv.includes("--config-mode-plan")) {
           const ids = ["default", "acceptEdits", "plan", "auto"].filter(
             (m) => m !== "auto" || !process.argv.includes("--no-auto-mode"),
           );
           result.modes = {
-            currentModeId: "default",
+            currentModeId: currentMode,
             availableModes: ids.map((id) => ({ id, name: id })),
           };
         }
         if (process.argv.includes("--config-models")) result.configOptions = [modelOption()];
+        if (process.argv.includes("--config-mode-plan")) result.configOptions = [...(result.configOptions ?? []), modeOption()];
         if (process.argv.includes("--legacy-models")) {
           result.models = {
             currentModelId: currentModel,
@@ -287,6 +301,11 @@ function handle(msg) {
       }
       return;
     case "session/set_config_option":
+      if (params?.configId === "mode" && ["build", "plan"].includes(params?.value)) {
+        currentMode = params.value;
+        send({ id, result: { configOptions: [modeOption()] } });
+        return;
+      }
       if (params?.configId !== "model" || !MODELS.some((m) => m.value === params?.value)) {
         send({ id, error: { code: -32602, message: "no such model" } });
         return;
@@ -330,6 +349,13 @@ function handle(msg) {
     case "session/prompt":
       if (params?.sessionId !== sessionId) {
         send({ id, error: { code: -32602, message: "unknown session" } });
+        return;
+      }
+      // --refuse-model: the account can't use "fast" (like Codex signed in with ChatGPT);
+      // --refuse-all-models: it can't use any of them.
+      if (process.argv.includes("--refuse-all-models") || (process.argv.includes("--refuse-model") && currentModel === "fast")) {
+        const details = `{"type":"error","status":400,"error":{"type":"invalid_request_error","message":"The '${currentModel}' model is not supported when using Codex with a ChatGPT account.","code":"model_not_found"}}`;
+        send({ id, error: { code: -32603, message: "Internal error", data: { details } } });
         return;
       }
       if (params.prompt?.some((b) => b.type === "text" && b.text.trim() === "fail")) {
