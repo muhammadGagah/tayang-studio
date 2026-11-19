@@ -258,6 +258,14 @@ describe('createTopicProject', () => {
     expect(vi.mocked(ipc.createProject).mock.calls[0]![0]).toHaveProperty('styleId', 'copied-1');
   });
 
+  it('uses the official style for an older topic card with a bundled ID', async () => {
+    const watercolor = { ...atlas, id: 'watercolor', template: null, prompt: 'Adapted from https://github.com/lemomo-ai/lemo-opuscar/tree/main/styles/watercolor' };
+    vi.mocked(ipc.listStyles).mockResolvedValue([watercolor]);
+    await createTopicProject({ ...idea, styleId: 'lemo-opuscar-watercolor' }, { settings, agent: 'claude' });
+    expect(ipc.createProject).toHaveBeenCalledWith(expect.objectContaining({ styleId: 'watercolor' }), expect.any(String));
+    expect(ipc.syncStyles).not.toHaveBeenCalled();
+  });
+
   it('says so in the chat when the agent names a style nobody has', async () => {
     vi.mocked(ipc.listStyles).mockResolvedValue([atlas]);
     await createTopicProject({ ...idea, styleId: 'made-up' }, { settings, agent: 'claude' });

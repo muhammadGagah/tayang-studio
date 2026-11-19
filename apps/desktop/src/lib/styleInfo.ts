@@ -1,6 +1,12 @@
 import type { Style } from '@tayang/shared';
 import { i18n } from '@/i18n';
 
+const LEMO_REPO = 'https://github.com/lemomo-ai/lemo-opuscar/';
+
+export const isLemoStyle = (s: Style): boolean => s.source === 'builtin' && (
+  s.sourceUrl?.startsWith(LEMO_REPO) === true || s.prompt.includes(`${LEMO_REPO}tree/main/styles/${s.id}`)
+);
+
 /** The public thumbnail of a YouTube link (watch?v=, youtu.be/, shorts/, embed/), null for anything else. */
 export function youtubeThumbnail(raw: string | null | undefined): string | null {
   if (!raw) return null;

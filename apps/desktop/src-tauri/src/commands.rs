@@ -229,7 +229,7 @@ fn new_project_with(
         format: input.format,
         language: input.language,
         status: ProjectStatus::Draft,
-        style_id: input.style_id,
+        style_id: input.style_id.as_deref().map(|id| db.canonical_style_id(id).to_owned()),
         scheduled_at: None,
         review_state: ReviewState::None,
         posted_at: None,

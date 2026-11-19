@@ -12,7 +12,7 @@ import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Textarea } from '@/components/ui/textarea';
 import { i18n } from '@/i18n';
 import { localized } from '@/lib/stored';
-import { posterOf, youtubeThumbnail } from '@/lib/styleInfo';
+import { isLemoStyle, posterOf, youtubeThumbnail } from '@/lib/styleInfo';
 import { assetUrl, deleteStyle, listStyles, saveStyle, syncStyles } from '@/lib/ipc';
 import { cn } from '@/lib/utils';
 import { useApp } from '@/state/app';
@@ -337,7 +337,7 @@ function Detail({
   const [prompt, setPrompt] = useState(style.prompt);
   const [error, setError] = useState<string | null>(null);
   const builtin = style.source === 'builtin';
-  const contentLanguage = builtin && style.id.startsWith('lemo-opuscar-') ? 'en' : undefined;
+  const contentLanguage = isLemoStyle(style) ? 'en' : undefined;
   const studyBusy = useStudy((s) => s.phase === 'running' || s.phase === 'finishing');
 
   const reset = () => {

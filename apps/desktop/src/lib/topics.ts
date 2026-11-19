@@ -5,6 +5,7 @@ import { copyStyleRefs, createChat, createProject, installStyleTemplate, listSty
 import { advanceProject } from '@/lib/projectStatus';
 import { i18n } from '@/i18n';
 import { stored } from '@/lib/stored';
+import { isLemoStyle } from '@/lib/styleInfo';
 import { useApp } from '@/state/app';
 import { appendSystem, useChat } from '@/state/chat';
 import { track } from '@/lib/analytics';
@@ -104,10 +105,13 @@ const slug = (s: string) =>
     .replace(/[^a-z0-9]+/g, '-')
     .replace(/^-+|-+$/g, '');
 
-/** A style by its id, or (agents sometimes write the name instead) by its name or a slug of it. */
-function findStyle(styles: Style[], ref: string): Style | undefined {
-  return styles.find((s) => s.id === ref) ?? styles.find((s) => slug(s.name) === slug(ref));
-}
+/** Old topic cards can carry a bundled ID from before Tayang published the style. */
+const findStyleById = (styles: Style[], ref: string) => styles.find((s) => s.id === ref)
+  ?? styles.find((s) => `lemo-opuscar-${s.id}` === ref && isLemoStyle(s));
+
+/** Agents sometimes write the name or its slug instead of an ID. */
+const findStyle = (styles: Style[], ref: string) => findStyleById(styles, ref)
+  ?? styles.find((s) => slug(s.name) === slug(ref));
 
 export async function createTopicProject(idea: TopicIdea, opts: TopicProjectOpts): Promise<{ project: Project; chat: Chat }> {
   const { settings, agent } = opts;
@@ -119,13 +123,13 @@ export async function createTopicProject(idea: TopicIdea, opts: TopicProjectOpts
     try {
       let styles = await listStyles();
       // A built-in style the agent named may not be synced yet: sync once, then look again.
-      if (idea.styleId && !styles.some((s) => s.id === idea.styleId)) {
+      if (idea.styleId && !findStyleById(styles, idea.styleId)) {
         const synced = await syncStyles().catch(() => null);
         if (synced) styles = await listStyles();
       }
       style =
         (idea.styleId ? findStyle(styles, idea.styleId) : undefined) ??
-        (fallbackId ? styles.find((s) => s.id === fallbackId) : undefined) ??
+        (fallbackId ? findStyleById(styles, fallbackId) : undefined) ??
         null;
       // A style the user picked that is gone, or one the agent named that nobody has, is said in the chat.
       if (!style && fallbackId) styleProblem = stored('chat.templateGone');

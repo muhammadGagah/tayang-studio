@@ -385,7 +385,7 @@ describe('Style built-in styles from the API', () => {
   });
 
   it('announces offline availability and starts a chat with a bundled style', async () => {
-    const watercolor = (JSON.parse(bundledCatalog) as StyleT[]).find((s) => s.id === 'lemo-opuscar-watercolor')!;
+    const watercolor = (JSON.parse(bundledCatalog) as StyleT[]).find((s) => s.id === 'watercolor')!;
     vi.mocked(ipc.syncStyles).mockResolvedValue({ styles: [watercolor], offline: true });
     vi.mocked(ipc.listStyles).mockResolvedValue([watercolor]);
     render(<Style />);

@@ -20,7 +20,7 @@
     ]
   },
   {
-    "id": "lemo-opuscar-watercolor",
+    "id": "watercolor",
     "name": "Watercolor Brush",
     "source": "builtin",
     "sourceUrl": "https://github.com/lemomo-ai/lemo-opuscar/blob/143f387ad774525dc9abc0ff05fb5f4bfbaa5f02/styles/watercolor/STYLE.md",
@@ -99,7 +99,7 @@
     ]
   },
   {
-    "id": "lemo-opuscar-whiteboard",
+    "id": "whiteboard",
     "name": "Whiteboard Explainer",
     "source": "builtin",
     "sourceUrl": "https://github.com/lemomo-ai/lemo-opuscar/blob/143f387ad774525dc9abc0ff05fb5f4bfbaa5f02/styles/whiteboard/STYLE.md",
@@ -119,7 +119,7 @@
     ]
   },
   {
-    "id": "lemo-opuscar-shadow-puppet",
+    "id": "shadow-puppet",
     "name": "Shadow Puppetry",
     "source": "builtin",
     "sourceUrl": "https://github.com/lemomo-ai/lemo-opuscar/blob/143f387ad774525dc9abc0ff05fb5f4bfbaa5f02/styles/shadow-puppet/STYLE.md",
@@ -159,7 +159,7 @@
     ]
   },
   {
-    "id": "lemo-opuscar-papercut-red",
+    "id": "papercut-red",
     "name": "Red Paper-cut",
     "source": "builtin",
     "sourceUrl": "https://github.com/lemomo-ai/lemo-opuscar/blob/143f387ad774525dc9abc0ff05fb5f4bfbaa5f02/styles/papercut-red/STYLE.md",
@@ -258,7 +258,7 @@
     ]
   },
   {
-    "id": "lemo-opuscar-swiss-motion",
+    "id": "swiss-motion",
     "name": "Swiss Motion Graphics",
     "source": "builtin",
     "sourceUrl": "https://github.com/lemomo-ai/lemo-opuscar/blob/143f387ad774525dc9abc0ff05fb5f4bfbaa5f02/styles/swiss-motion/STYLE.md",
@@ -396,7 +396,7 @@
     ]
   },
   {
-    "id": "lemo-opuscar-dataviz",
+    "id": "dataviz",
     "name": "Data Storytelling",
     "source": "builtin",
     "sourceUrl": "https://github.com/lemomo-ai/lemo-opuscar/blob/143f387ad774525dc9abc0ff05fb5f4bfbaa5f02/styles/dataviz/STYLE.md",
@@ -416,7 +416,7 @@
     ]
   },
   {
-    "id": "lemo-opuscar-iso-infographic",
+    "id": "iso-infographic",
     "name": "Isometric Infographic",
     "source": "builtin",
     "sourceUrl": "https://github.com/lemomo-ai/lemo-opuscar/blob/143f387ad774525dc9abc0ff05fb5f4bfbaa5f02/styles/iso-infographic/STYLE.md",
@@ -774,7 +774,7 @@
     ]
   },
   {
-    "id": "lemo-opuscar-midcentury-toon",
+    "id": "midcentury-toon",
     "name": "Mid-century Cartoon",
     "source": "builtin",
     "sourceUrl": "https://github.com/lemomo-ai/lemo-opuscar/blob/143f387ad774525dc9abc0ff05fb5f4bfbaa5f02/styles/midcentury-toon/STYLE.md",
@@ -1193,7 +1193,7 @@
     ]
   },
   {
-    "id": "lemo-opuscar-transit-map",
+    "id": "transit-map",
     "name": "Transit Map",
     "source": "builtin",
     "sourceUrl": "https://github.com/lemomo-ai/lemo-opuscar/blob/143f387ad774525dc9abc0ff05fb5f4bfbaa5f02/styles/transit-map/STYLE.md",
@@ -1213,7 +1213,7 @@
     ]
   },
   {
-    "id": "lemo-opuscar-chalkboard",
+    "id": "chalkboard",
     "name": "Chalkboard",
     "source": "builtin",
     "sourceUrl": "https://github.com/lemomo-ai/lemo-opuscar/blob/143f387ad774525dc9abc0ff05fb5f4bfbaa5f02/styles/chalkboard/STYLE.md",

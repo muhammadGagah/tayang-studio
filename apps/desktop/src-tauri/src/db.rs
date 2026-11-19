@@ -108,6 +108,7 @@ const SLOT_SELECT: &str = "SELECT id, autopilot_id AS autopilotId, due_at AS due
     project_id AS projectId, error FROM autopilot_slots";
 
 pub const DEFAULT_API_URL: &str = "https://studio.tayang.app/api";
+const LEMO_STYLE_PREFIX: &str = "lemo-opuscar-";
 
 /// The API moved under `/api` (https://studio.tayang.app/api). A saved address from before
 /// that is rewritten on read: the old production host becomes the default, a bare local dev
@@ -310,7 +311,26 @@ impl Db {
 
     pub(crate) fn with_bundled_styles(mut self) -> Result<Self> {
         self.bundled_styles = serde_json::from_str(include_str!("../styles/lemo-opuscar/catalog.json"))?;
+        {
+            let mut conn = self.conn();
+            let tx = conn.transaction()?;
+            // Styles also published by Tayang share its IDs so the downloaded catalog wins.
+            for style in self.bundled_styles.iter().filter(|s| !s.id.starts_with(LEMO_STYLE_PREFIX)) {
+                let old = format!("{LEMO_STYLE_PREFIX}{}", style.id);
+                let ids = [&style.id, &old];
+                tx.execute("UPDATE projects SET style_id = ?1 WHERE style_id = ?2", ids)?;
+                tx.execute("UPDATE autopilots SET style_id = ?1 WHERE style_id = ?2", ids)?;
+                tx.execute("UPDATE styles SET based_on = ?1 WHERE based_on = ?2", ids)?;
+            }
+            tx.commit()?;
+        }
         Ok(self)
+    }
+
+    pub(crate) fn canonical_style_id<'a>(&self, id: &'a str) -> &'a str {
+        id.strip_prefix(LEMO_STYLE_PREFIX)
+            .filter(|suffix| self.bundled_styles.iter().any(|s| s.id == *suffix))
+            .unwrap_or(id)
     }
 
     fn init(conn: Connection) -> Result<Db> {
@@ -528,7 +548,8 @@ impl Db {
             merged["updatedAt"] = json!(now());
         }
         merge_patch(&mut merged, &patch);
-        let updated: Project = serde_json::from_value(merged)?;
+        let mut updated: Project = serde_json::from_value(merged)?;
+        updated.style_id = updated.style_id.as_deref().map(|id| self.canonical_style_id(id).to_owned());
         let mut vals = bind_values(&updated, &PROJECT_KEYS)?;
         let id_val = vals.remove(0);
         vals.push(id_val);
@@ -748,7 +769,13 @@ impl Db {
             let mut v = row?;
             let parts: Value = serde_json::from_str(v["parts"].as_str().unwrap_or("[]"))?;
             v["parts"] = parts;
-            out.push(serde_json::from_value(v)?);
+            let mut msg: ChatMessage = serde_json::from_value(v)?;
+            for part in &mut msg.parts {
+                if let MessagePart::StyleMention { style_id, .. } = part {
+                    *style_id = self.canonical_style_id(style_id).to_owned();
+                }
+            }
+            out.push(msg);
         }
         Ok(out)
     }
@@ -911,6 +938,7 @@ impl Db {
     }
 
     pub fn get_style(&self, id: &str) -> Result<Option<Style>> {
+        let id = self.canonical_style_id(id);
         Ok(self.list_styles()?.into_iter().find(|s| s.id == id))
     }
 
@@ -1099,9 +1127,10 @@ impl Db {
     /// Creates an autopilot (no id; starts active) or edits one (keeps its status and creation time).
     pub fn save_autopilot(&self, input: &AutopilotInput) -> Result<Autopilot> {
         validate_autopilot(input)?;
-        let style_known = self.bundled_styles.iter().any(|style| style.id == input.style_id)
+        let style_id = self.canonical_style_id(&input.style_id);
+        let style_known = self.bundled_styles.iter().any(|style| style.id == style_id)
             || self.conn()
-                .query_row("SELECT 1 FROM styles WHERE id = ?1", [&input.style_id], |_| Ok(true))
+                .query_row("SELECT 1 FROM styles WHERE id = ?1", [style_id], |_| Ok(true))
                 .optional()?
                 .unwrap_or(false);
         if !style_known {
@@ -1118,7 +1147,7 @@ impl Db {
             niche: input.niche.trim().to_string(),
             niche_id: input.niche_id.clone(),
             language: input.language,
-            style_id: input.style_id.clone(),
+            style_id: style_id.to_owned(),
             voice_id: input.voice_id.clone(),
             agent_id: input.agent_id,
             frequency: input.frequency.clone(),
@@ -1765,30 +1794,47 @@ mod tests {
         assert_eq!(styles.iter().map(|s| &s.id).collect::<HashSet<_>>().len(), styles.len());
         assert!(styles.iter().all(|s| {
             s.source == StyleSource::Builtin
-                && s.id.starts_with("lemo-opuscar-")
+                && s.source_url.as_deref().is_some_and(|url| url.contains("/lemomo-ai/lemo-opuscar/"))
                 && s.engine.is_some()
                 && !s.prompt.is_empty()
                 && !s.palette.is_empty()
         }));
 
-        let id = "lemo-opuscar-watercolor";
+        let id = "watercolor";
+        let old_id = "lemo-opuscar-watercolor";
         let watercolor = db.get_style(id).unwrap().unwrap();
+        assert_eq!(db.get_style(old_id).unwrap(), Some(watercolor.clone()));
         assert_eq!(watercolor.engine, Some(StyleEngine::Hyperframes));
         assert_eq!(db.get_style("lemo-opuscar-brick-toy").unwrap().unwrap().engine, Some(StyleEngine::Remotion));
         assert!(db.delete_style(id).is_err());
         assert!(db.save_style(&Style { source: StyleSource::Mine, ..watercolor.clone() }).is_err());
 
-        let clone = Style { id: "my-watercolor".into(), source: StyleSource::Mine, based_on: Some(id.into()), ..watercolor.clone() };
+        let mut clone = Style { id: "my-watercolor".into(), source: StyleSource::Mine, based_on: Some(old_id.into()), ..watercolor.clone() };
         db.save_style(&clone).unwrap();
-        db.replace_builtin_styles(&[builtin("server-style", true)]).unwrap();
+        let mut p = project("p", "2026-01-01T00:00:00Z");
+        p.style_id = Some(old_id.into());
+        db.insert_project(&p).unwrap();
+        let mut schedule = input("Watercolor series");
+        schedule.style_id = old_id.into();
+        let autopilot = db.save_autopilot(&schedule).unwrap();
+        assert_eq!(autopilot.style_id, id);
+        db.conn().execute("UPDATE autopilots SET style_id = ?1 WHERE id = ?2", [old_id, &autopilot.id]).unwrap();
+
+        let db = db.with_bundled_styles().unwrap();
+        assert_eq!(db.get_project("p").unwrap().unwrap().style_id.as_deref(), Some(id));
+        assert_eq!(db.get_autopilot(&autopilot.id).unwrap().unwrap().style_id, id);
+        clone.based_on = Some(id.into());
+        let upstream = Style { prompt: "Upstream watercolor prompt".into(), engine: Some(StyleEngine::Hyperframes), ..builtin(id, false) };
+        db.replace_builtin_styles(&[upstream.clone()]).unwrap();
         let synced = db.list_styles().unwrap();
-        assert_eq!(synced.first().unwrap().id, "server-style");
+        assert_eq!(synced.first().unwrap(), &upstream);
+        assert_eq!(synced.iter().filter(|s| s.id == id || s.id == old_id).count(), 1);
         assert_eq!(synced.last().unwrap(), &clone);
+        assert_eq!(db.get_style(old_id).unwrap(), Some(upstream));
+        db.delete_autopilot(&autopilot.id).unwrap();
+        db.delete_style(&clone.id).unwrap();
         db.replace_builtin_styles(&[]).unwrap();
         assert_eq!(db.get_style(id).unwrap(), Some(watercolor));
-        let mut schedule = input("Watercolor series");
-        schedule.style_id = id.into();
-        assert_eq!(db.save_autopilot(&schedule).unwrap().style_id, id);
     }
 
     #[test]

@@ -94,6 +94,6 @@ In a video chat, ask for natural foley or sound effects synced to the picture. T
 
 In **Settings → Video defaults → Voiceover**, choose **ElevenLabs** for Tayang credits or **Gemini TTS** for your own Google quota. Paste a [Gemini API key from Google AI Studio](https://aistudio.google.com/apikey) and save it. Tayang checks access and stores the key in the system keychain. The agent uses the same local `/voice` route and receives an MP3. One speaker uses Gemini 3.8 Live, as in QuickSpeak. Two speakers use Gemini 3.8 Flash TTS via Interactions, as in Native Speech Generation. Google receives the narration or dialogue. [Google Live API](https://ai.google.dev/api/live) · [Google speech generation](https://ai.google.dev/gemini-api/docs/speech-generation)
 
-Tayang bundles 66 visual styles adapted from [Lemo-Opuscar by LemoLab](https://github.com/lemomo-ai/lemo-opuscar/tree/143f387ad774525dc9abc0ff05fb5f4bfbaa5f02) under the [MIT license](apps/desktop/src-tauri/styles/lemo-opuscar/LICENSE). They are available offline under Style → Built in and use Tayang's normal video workflow.
+Tayang bundles 66 visual styles adapted from [Lemo-Opuscar by LemoLab](https://github.com/lemomo-ai/lemo-opuscar/tree/143f387ad774525dc9abc0ff05fb5f4bfbaa5f02) under the [MIT license](apps/desktop/src-tauri/styles/lemo-opuscar/LICENSE). They are available offline under Style → Built in. Styles also published by Tayang appear once and use the official version when it is cached.
 
 UI polished with unslop by Damir Sokolovsky (@heydamir), CC BY 4.0.
